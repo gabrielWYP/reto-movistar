@@ -53,3 +53,6 @@ class CollectionsAgentTests(unittest.TestCase):
         self.assertEqual(bad_status, 400)
         self.assertIn("error", error)
         self.assertIn("Cobranzas y Recaudación", PAGE)
+        self.assertIn("Antigüedad de la deuda", PAGE)
+        self.assertIn("Detalle técnico e integración (JSON)", PAGE)
+        self.assertIn("Índice de prioridad", PAGE)
