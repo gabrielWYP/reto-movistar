@@ -625,7 +625,7 @@ class BIService:
             analysis_scope={"currency": PEN, "dimension": dimension, "as_of_date_applied": True, "sample_scope": "hackathon dataset"},
             methodology={
                 "deterministic": True,
-                "composition": ["executive_snapshot", "risk_concentration", "recovery_intelligence", "data_quality_report"],
+                "composition": ["executive_snapshot", "risk_concentration", "recovery_intelligence", "_quality"],
                 "priority_rule": "HIGH >= 60% share, MEDIUM >= 25% share, otherwise LOW; document-review findings are MEDIUM",
                 "data_quality": "warnings are emitted as alerts and kept separate from business findings",
                 "causality": "not inferred",

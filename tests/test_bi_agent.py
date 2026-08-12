@@ -4,8 +4,13 @@ import csv
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from bi_agent.agent import TOOL_NAMES, ask, dispatch, tool_schemas, validate_arguments
+from bi_agent.llm_runtime import OpenAIRuntime
 from bi_agent.service import BIService
+from bi_agent.visuals import ALLOWED_COMPONENTS, dashboard_spec
+from bi_agent.web_app import create_server, route_payload
 
 
 HEADERS = {
@@ -184,3 +189,103 @@ class BICoreTests(unittest.TestCase):
         self.assertEqual(upstream["status"], "reference_only")
         self.assertTrue(upstream["priority_evidence_available"])
         self.assertNotIn("priority_score", response["metrics"])
+
+    def test_agent_runtime_exposes_only_five_closed_tools(self):
+        schemas = tool_schemas()
+        self.assertEqual({schema["name"] for schema in schemas}, TOOL_NAMES)
+        self.assertEqual(len(schemas), 5)
+        self.assertTrue(all(schema["parameters"]["additionalProperties"] is False for schema in schemas))
+
+    def test_agent_fallback_routes_demo_questions_and_preserves_original_response(self):
+        cases = [
+            ("¿Cómo está el ciclo de ingresos al 31 de julio?", "executive_snapshot"),
+            ("¿Dónde está concentrado el saldo vencido?", "risk_concentration"),
+            ("¿Qué oportunidades de recupero tenemos?", "recovery_intelligence"),
+            ("¿Qué debería priorizar la gerencia?", "management_insights"),
+            ("¿Qué limitaciones tiene la información?", "data_quality_report"),
+        ]
+        for question, expected in cases:
+            result = ask(self.service, question, "2026-07-31")
+            self.assertEqual(result["tool_used"], expected)
+            self.assertEqual(result["agent_response"]["operation"], expected)
+            self.assertEqual(result["agent_response"]["as_of_date"], "2026-07-31")
+            self.assertEqual(result["mode"], "deterministic")
+
+    def test_agent_rejects_unknown_tools_and_arbitrary_arguments(self):
+        with self.assertRaises(ValueError):
+            validate_arguments("shell", {}, "2026-07-31")
+        with self.assertRaises(ValueError):
+            validate_arguments("risk_concentration", {"sql": "select *"}, "2026-07-31")
+        with self.assertRaises(ValueError):
+            validate_arguments("risk_concentration", {"dimension": "__import__('os')"}, "2026-07-31")
+        with self.assertRaises(ValueError):
+            ask(self.service, "x" * 1001, "2026-07-31")
+
+    def test_dispatch_forces_requested_cutoff_and_only_service_computes(self):
+        result = dispatch(self.service, "executive_snapshot", {"as_of_date": "2020-01-01"}, "2026-07-31")
+        self.assertEqual(result["as_of_date"], "2026-07-31")
+        self.assertEqual(result["metrics"]["outstanding_balance"], 240.0)
+
+    def test_visual_catalog_only_emits_allowed_components_and_ignores_unknown_hints(self):
+        response = self.service.recovery_intelligence("2026-07-31")
+        response["visualization_hints"].append({"type": "execute_javascript", "source": "bad"})
+        spec = dashboard_spec(response)
+        self.assertTrue({item["type"] for item in spec["components"]}.issubset(ALLOWED_COMPONENTS))
+        self.assertIn("execute_javascript", spec["ignored_hints"])
+        self.assertTrue(any(item["type"] == "kpi_cards" for item in spec["components"]))
+
+    def test_visual_catalog_resolves_indexed_evidence_hints_for_risk_tables(self):
+        response = self.service.risk_concentration("SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31")
+        spec = dashboard_spec(response)
+        ranking = next(item for item in spec["components"] if item["type"] == "ranking_table")
+        self.assertEqual(ranking["source_id"], "top_customers")
+        self.assertTrue(ranking["data"])
+
+    def test_visual_catalog_resolves_first_class_findings_and_aging_sources(self):
+        recovery = dashboard_spec(self.service.recovery_intelligence("2026-07-31"))
+        opportunity = next(item for item in recovery["components"] if item["type"] == "opportunity_table")
+        self.assertTrue(opportunity["data"])
+        executive = dashboard_spec(self.service.executive_snapshot("2026-07-31"))
+        aging = next(item for item in executive["components"] if item["type"] == "aging_bar")
+        self.assertTrue(aging["data"])
+
+    def test_web_routes_use_agent_and_safe_fixed_surface_without_api_key(self):
+        runtime = OpenAIRuntime()
+        with patch.dict("os.environ", {}, clear=True):
+            status, state = route_payload(self.service, runtime, "/api/status")
+            self.assertEqual(status, 200)
+            self.assertFalse(state["llm_available"])
+            status, result = route_payload(self.service, runtime, "/api/query", {"question": "¿Qué oportunidades de recupero tenemos?", "as_of_date": "2026-07-31"})
+        self.assertEqual(status, 200)
+        self.assertEqual(result["tool_used"], "recovery_intelligence")
+        self.assertIn("components", result["dashboard"])
+        missing_status, missing = route_payload(self.service, runtime, "/api/../../secret")
+        self.assertEqual(missing_status, 404)
+        self.assertIn("error", missing)
+        tool_status, tool_error = route_payload(self.service, runtime, "/api/tool?operation=__import__")
+        self.assertEqual(tool_status, 400)
+        self.assertIn("error", tool_error)
+
+    def test_management_dashboard_does_not_duplicate_hint_components(self):
+        spec = dashboard_spec(self.service.management_insights("2026-07-31"))
+        component_types = [item["type"] for item in spec["components"]]
+        self.assertEqual(component_types.count("insight_cards"), 1)
+        self.assertEqual(component_types.count("alert_cards"), 1)
+
+    def test_llm_failure_falls_back_without_breaking_deterministic_tools(self):
+        class BrokenRuntime:
+            available = True
+            def select_tool(self, question, as_of_date):
+                raise RuntimeError("API unavailable")
+        status, result = route_payload(self.service, BrokenRuntime(), "/api/query", {"question": "¿Cómo está la cartera?", "as_of_date": "2026-07-31"})
+        self.assertEqual(status, 200)
+        self.assertEqual(result["mode"], "deterministic_fallback")
+        self.assertEqual(result["agent_response"]["operation"], "executive_snapshot")
+
+    def test_openai_runtime_is_mockable_and_requires_exactly_one_function_call(self):
+        response = {"output": [{"type": "function_call", "name": "executive_snapshot", "call_id": "call_1", "arguments": "{}"}]}
+        runtime = OpenAIRuntime(post=lambda payload, key: response)
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}, clear=True):
+            choice = runtime.select_tool("resumen", "2026-07-31")
+        self.assertEqual(choice["tool_name"], "executive_snapshot")
+        self.assertEqual(choice["arguments"], {})
