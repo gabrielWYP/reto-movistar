@@ -96,3 +96,91 @@ class BICoreTests(unittest.TestCase):
         self.assertEqual(response["data_quality"]["join_rules"]["customer"], "RAZON_SOCIAL")
         self.assertEqual(response["data_quality"]["join_rules"]["document"], "NRO_DOC_FISCAL -> FACTURA_AFECTADA")
         self.assertTrue(response["data_quality"]["quality_checks"]["ruc_join_disabled"])
+
+    def assert_evidence_traceable(self, response):
+        evidence_ids = {item["id"] for item in response["evidence"]}
+        for item in response["findings"] + response["alerts"] + response["recommended_actions"]:
+            self.assertIn("evidence_refs", item)
+            self.assertTrue(item["evidence_refs"])
+            self.assertTrue(set(item["evidence_refs"]).issubset(evidence_ids))
+
+    def test_recovery_is_reproducible_pen_only_and_does_not_duplicate_plant_amounts(self):
+        first = self.service.recovery_intelligence("2026-07-31", "PORTFOLIO", "SEGMENTO_PAIS", 10)
+        second = self.service.recovery_intelligence("2026-07-31", "PORTFOLIO", "SEGMENTO_PAIS", 10)
+        self.assertEqual(first, second)
+        self.assertEqual(first["agent"], "bi")
+        self.assertEqual(first["metrics"]["currency"], "PEN")
+        self.assertEqual(first["metrics"]["exposure_total"], 240.0)
+        self.assertEqual(first["metrics"]["overdue_balance"], 40.0)
+        self.assertEqual(first["metrics"]["addressable_exposure"], 40.0)
+        self.assert_evidence_traceable(first)
+
+    def test_recovery_pareto_and_dimension_percentages_are_consistent(self):
+        response = self.service.recovery_intelligence("2026-07-31")
+        customers = response["evidence"][0]["value"]
+        groups = response["evidence"][1]["value"]
+        self.assertEqual(customers[-1]["cumulative_share"], 1.0)
+        self.assertEqual(groups[-1]["cumulative_share"], 1.0)
+        self.assertEqual(sum(item["share"] for item in groups), 1.0)
+        self.assertEqual(response["metrics"]["top_n_customer_coverage"], customers[-1]["cumulative_share"])
+
+    def test_recovery_respects_cutoff_and_changes_its_opportunities(self):
+        before_due = self.service.recovery_intelligence("2026-07-09")
+        after_due = self.service.recovery_intelligence("2026-07-31")
+        before_types = {item["type"] for item in before_due["findings"]}
+        after_types = {item["type"] for item in after_due["findings"]}
+        self.assertEqual(before_due["metrics"]["overdue_balance"], 0.0)
+        self.assertNotIn("IMMEDIATE_RECOVERY_OPPORTUNITY", before_types)
+        self.assertIn("IMMEDIATE_RECOVERY_OPPORTUNITY", after_types)
+        self.assertEqual(before_due["metrics"]["preventive_open_balance"], 300.0)
+
+    def test_credit_note_creates_document_review_not_billing_error(self):
+        response = self.service.recovery_intelligence("2026-07-31")
+        document_finding = next(item for item in response["findings"] if item["type"] == "DOCUMENT_REVIEW_OPPORTUNITY")
+        self.assertIn("does not establish a billing error", document_finding["impact"])
+        self.assertFalse(any("ERROR" in item["type"] for item in response["findings"]))
+        self.assertTrue(any(item["action"] == "review_document_adjustments_before_contact" for item in response["recommended_actions"]))
+
+    def test_management_insights_are_priority_ordered_and_quality_is_separate(self):
+        response = self.service.management_insights("2026-07-31")
+        priority = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "INFO": 3}
+        finding_priorities = [priority[item["severity"]] for item in response["findings"]]
+        self.assertEqual(finding_priorities, sorted(finding_priorities))
+        self.assertTrue(all(not item["type"].startswith("DATA_QUALITY") for item in response["findings"]))
+        self.assertTrue(any(item["type"].startswith("DATA_QUALITY") for item in response["alerts"]))
+        self.assert_evidence_traceable(response)
+
+    def test_management_insights_change_with_cutoff_and_dataset(self):
+        before_due = self.service.management_insights("2026-07-09")
+        after_due = self.service.management_insights("2026-07-31")
+        self.assertNotEqual(before_due["metrics"]["overdue_balance"], after_due["metrics"]["overdue_balance"])
+        with tempfile.TemporaryDirectory() as folder:
+            changed = Path(folder)
+            write_dataset(changed)
+            invoice_path = changed / "005_TBL_FACTURAS_B2B.csv"
+            with invoice_path.open(encoding="latin1", newline="") as source:
+                rows = list(csv.DictReader(source, delimiter="|"))
+            for row in rows:
+                if row["NRO_DOC_FISCAL"] == "INV_A":
+                    row["CHARGE_NET_AMOUNT"] = "500"
+                    row["CHARGE_TOTAL_AMOUNT"] = "500"
+            with invoice_path.open("w", encoding="latin1", newline="") as target:
+                writer = csv.DictWriter(target, fieldnames=HEADERS["005_TBL_FACTURAS_B2B.csv"], delimiter="|")
+                writer.writeheader()
+                writer.writerows(rows)
+            changed_response = BIService(changed).management_insights("2026-07-31")
+        self.assertNotEqual(after_due["metrics"]["overdue_balance"], changed_response["metrics"]["overdue_balance"])
+
+    def test_collections_response_boundary_is_json_only_and_does_not_recalculate_priority(self):
+        collections_response = {
+            "contract_version": "1.0",
+            "agent": "collections",
+            "operation": "collection_priorities",
+            "as_of_date": "2026-07-31",
+            "evidence": [{"customer": "CLIENT_A", "priority_score": 99}],
+        }
+        response = BIService(self.dataset, collections_response).recovery_intelligence("2026-07-31")
+        upstream = next(item for item in response["upstream_inputs"] if item["type"] == "collections_agent_response")
+        self.assertEqual(upstream["status"], "reference_only")
+        self.assertTrue(upstream["priority_evidence_available"])
+        self.assertNotIn("priority_score", response["metrics"])
