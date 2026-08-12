@@ -3,6 +3,7 @@ import unittest
 
 from collections_agent.service import CollectionsService
 from collections_agent.openai_runtime import _schemas
+from collections_agent.web_app import PAGE, route_payload
 
 
 DATASET = Path(__file__).resolve().parents[1] / "data" / "source" / "SONIA_DESAFIO_03.zip"
@@ -39,3 +40,16 @@ class CollectionsAgentTests(unittest.TestCase):
         schemas = _schemas()
         self.assertEqual(len(schemas), 5)
         self.assertEqual({schema["name"] for schema in schemas}, {"portfolio_snapshot", "customer_snapshot", "invoice_trace", "collection_priorities", "reconciliation_exceptions"})
+
+    def test_web_routes_use_existing_deterministic_tools(self):
+        service = self.service()
+        status, portfolio = route_payload(service, "/api/portfolio?as_of_date=2026-08-07")
+        customer_status, customer = route_payload(service, "/api/customer?id=CLIENT_00385&as_of_date=2026-08-07")
+        bad_status, error = route_payload(service, "/api/customer?id=UNKNOWN")
+        self.assertEqual(status, 200)
+        self.assertEqual(portfolio["operation"], "portfolio_snapshot")
+        self.assertEqual(customer_status, 200)
+        self.assertEqual(customer["entity"]["id"], "CLIENT_00385")
+        self.assertEqual(bad_status, 400)
+        self.assertIn("error", error)
+        self.assertIn("Cobranzas y Recaudación", PAGE)

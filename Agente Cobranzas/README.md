@@ -23,6 +23,18 @@ python -m collections_agent.cli priorities --limit 10
 python -m collections_agent.cli exceptions --limit 10
 ```
 
+## Interfaz para usuarios no técnicos
+
+Haz doble clic en `Iniciar Agente Cobranzas.cmd`. No requiere instalar Python ni escribir comandos.
+
+También puedes iniciarlo desde PowerShell:
+
+```powershell
+& ".\Iniciar Agente Cobranzas.ps1"
+```
+
+Se abrirá automáticamente `http://127.0.0.1:8501` en el navegador. La interfaz es local: sólo expone este agente de Cobranzas/Recaudación y no envía información fuera de la computadora. Para cerrarla, vuelve a la ventana de PowerShell y presiona `Ctrl+C`.
+
 Para ejecutar la demo, copia el ZIP anonimizado `SONIA_DESAFIO_03.zip` a `data/source/SONIA_DESAFIO_03.zip`; el cargador lee el ZIP anidado sin extraerlo en el repositorio. El archivo se excluye de Git para no incrementar el repositorio con datos de trabajo. Se puede usar otro archivo con `--dataset RUTA`.
 
 ## Modo GPT-5.6 y control de costo
