@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import copy
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ from unittest.mock import patch
 
 from bi_agent.agent import TOOL_NAMES, ask, dispatch, tool_schemas, validate_arguments
 from bi_agent.llm_runtime import OpenAIRuntime
+from bi_agent.presentation import METRIC_LABELS, presentation_for
 from bi_agent.service import BIService
 from bi_agent.visuals import ALLOWED_COMPONENTS, dashboard_spec
 from bi_agent.web_app import create_server, route_payload
@@ -259,6 +261,8 @@ class BICoreTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(result["tool_used"], "recovery_intelligence")
         self.assertIn("components", result["dashboard"])
+        self.assertIn("presentation", result)
+        self.assertEqual(result["presentation"]["analysis"]["title"], "Oportunidades de recupero")
         missing_status, missing = route_payload(self.service, runtime, "/api/../../secret")
         self.assertEqual(missing_status, 404)
         self.assertIn("error", missing)
@@ -289,3 +293,55 @@ class BICoreTests(unittest.TestCase):
             choice = runtime.select_tool("resumen", "2026-07-31")
         self.assertEqual(choice["tool_name"], "executive_snapshot")
         self.assertEqual(choice["arguments"], {})
+
+    def test_presentation_labels_metrics_without_changing_numeric_values_or_response(self):
+        response = self.service.risk_concentration("SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31")
+        original = copy.deepcopy(response)
+        view = presentation_for(response, dashboard_spec(response))
+        self.assertEqual(response, original)
+        self.assertEqual(METRIC_LABELS["overdue_balance"][0], "Saldo vencido")
+        self.assertEqual(view["kpis"][0]["label"], "Saldo vencido total")
+        self.assertEqual(view["kpis"][0]["value"], response["metrics"]["metric_total"])
+        self.assertEqual(view["kpis"][1]["value"], response["evidence"][0]["value"][0]["share"])
+
+    def test_presentation_humanizes_risk_story_and_preserves_anonymous_identifiers(self):
+        response = self.service.risk_concentration("SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31")
+        view = presentation_for(response, dashboard_spec(response))
+        finding = view["findings"][0]
+        self.assertEqual(finding["title"], "Alta concentración del saldo vencido")
+        self.assertIn("SEG_A", finding["detail"])
+        self.assertNotIn("The leading", finding["detail"])
+        table = next(component for component in view["components"] if component["type"] == "table")
+        self.assertEqual(table["columns"][0], "Cliente")
+        self.assertTrue(table["rows"][0][0].startswith("CLIENT_"))
+        self.assertEqual(finding["technical_type"], "RISK_CONCENTRATION")
+
+    def test_presentation_covers_all_demo_operations_in_spanish_and_keeps_alert_codes(self):
+        responses = [
+            self.service.executive_snapshot("2026-07-31"),
+            self.service.risk_concentration("SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31"),
+            self.service.recovery_intelligence("2026-07-31"),
+            self.service.management_insights("2026-07-31"),
+            self.service.data_quality_report("2026-07-31"),
+        ]
+        for response in responses:
+            view = presentation_for(response, dashboard_spec(response))
+            self.assertTrue(view["analysis"]["title"])
+            visible = " ".join(
+                [view["analysis"]["title"], view["analysis"]["description"]]
+                + [item["label"] for item in view["kpis"]]
+                + [item["title"] + " " + item["detail"] for item in view["findings"] + view["recommended_actions"] + view["alerts"]]
+            )
+            self.assertNotIn("The leading", visible)
+            self.assertNotIn("overdue_balance", visible)
+            self.assertNotIn("RISK_CONCENTRATION", visible)
+        executive_view = presentation_for(responses[0], dashboard_spec(responses[0]))
+        self.assertEqual(executive_view["alerts"][0]["title"], "Pagos sin factura vinculada")
+        self.assertEqual(executive_view["alerts"][0]["technical_type"], "DATA_QUALITY_UNMATCHED_PAYMENTS")
+
+    def test_presentation_is_identical_for_deterministic_and_llm_result_payloads(self):
+        payload = self.service.executive_snapshot("2026-07-31")
+        dashboard = dashboard_spec(payload)
+        deterministic = presentation_for(payload, dashboard)
+        llm_mode = presentation_for(payload, dashboard)
+        self.assertEqual(deterministic, llm_mode)

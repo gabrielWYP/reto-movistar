@@ -1,4 +1,4 @@
-# SON-IA Business Intelligence Agent v1.0
+# SON-IA Business Intelligence Agent v1.1
 
 Agente BI para la demo SON-IA: convierte el ciclo de ingresos B2B del dataset del hackathon en decisiones explicables. Los cálculos financieros son determinísticos; la IA opcional solo selecciona una herramienta cerrada e interpreta el resultado respaldado por evidencia.
 
@@ -19,6 +19,12 @@ Adaptive Dashboard declarativo
 ```
 
 El frontend no calcula importes. El catálogo visual es cerrado: KPI cards, barras, Pareto, ageing, tablas de ranking/oportunidades/evidencia, insight cards y alert cards. Los hints desconocidos se ignoran explícitamente; nunca se ejecuta código generado por un modelo.
+
+## Presentación para negocio
+
+`presentation.py` transforma el resultado técnico en etiquetas, definiciones y relatos ejecutivos en español sin mutar el `AgentResponse`. Por ejemplo, `overdue_balance` se presenta como **Saldo vencido** y `DATA_QUALITY_UNMATCHED_PAYMENTS` como **Pagos sin factura vinculada**. Los códigos, evidence IDs, parámetros y JSON original permanecen disponibles dentro de **Ver evidencia y trazabilidad técnica**.
+
+La capa visual conserva los identificadores anonimizados del dataset (por ejemplo, `CLIENT_00915` y `SEGMENTO_002`); no inventa nombres de clientes ni modifica evidencia o valores numéricos.
 
 ## Tools disponibles
 
