@@ -25,7 +25,9 @@ python -m collections_agent.cli exceptions --limit 10
 
 ## Interfaz para usuarios no técnicos
 
-Haz doble clic en `Iniciar Agente Cobranzas.cmd`. No requiere instalar Python ni escribir comandos.
+Haz doble clic en `Abrir Agente Cobranzas.vbs`. No requiere instalar Python ni escribir comandos. Se abrirá una ventana de PowerShell; déjala abierta mientras uses la interfaz.
+
+Si Windows no ejecuta archivos VBS por la configuración de tu equipo, usa `Iniciar Agente Cobranzas.cmd` con clic derecho y **Abrir**.
 
 También puedes iniciarlo desde PowerShell:
 
