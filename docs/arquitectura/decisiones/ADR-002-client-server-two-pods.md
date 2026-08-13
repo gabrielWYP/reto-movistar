@@ -34,12 +34,12 @@ flowchart LR
 El frontend recibe `BACKEND_HOST` y `BACKEND_PORT`; para K3S se debe configurar
 `BACKEND_HOST=reto-movistar-back`. El backend mantiene `SONIA_PORT=8080`.
 
-## Transición operativa
+## Entrega operativa
 
-El `Dockerfile` raíz permanece temporalmente como imagen de compatibilidad para
-el workflow e infraestructura actuales de un pod. `front/Dockerfile` y
-`back/Dockerfile` son el contrato definitivo de dos imágenes. La migración del
-repositorio `K3S_Infra` puede realizarse después sin interrumpir el host público.
+El workflow publica dos imágenes multi-arquitectura con el mismo tag inmutable:
+`reto-movistar-front` y `reto-movistar-back`. `K3S_Infra` despliega ambas
+como Deployments independientes y conserva un único IngressRoute hacia el
+frontend. El `Dockerfile` raíz queda únicamente como compatibilidad local.
 
 ## Consecuencias
 

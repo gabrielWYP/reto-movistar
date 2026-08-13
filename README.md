@@ -68,5 +68,6 @@ python -m venv .venv
 ```
 
 Los contratos operativos están disponibles en `GET /health` y
-`GET /api/agents`. El `Dockerfile` raíz conserva temporalmente la compatibilidad
-con el despliegue K3S actual de un solo pod.
+`GET /api/agents`. Producción publica imágenes independientes desde
+`front/Dockerfile` y `back/Dockerfile`; el `Dockerfile` raíz se conserva
+solo para compatibilidad local.
