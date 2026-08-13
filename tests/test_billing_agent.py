@@ -62,6 +62,31 @@ class OfficialDatasetIntegrationTests(unittest.TestCase):
         self.assertGreater(result["metrics"]["invoice_count"], 0)
         self.assertIn("BILLING_CYCLE_GAP", {item["type"] for item in result["findings"]})
 
+    def test_customer_without_account_includes_billed_and_plant_accounts(self) -> None:
+        result = self.service.customer_billing_check("CLIENT_00434")
+        plant_ids = [item["id"] for item in result["evidence"] if item["type"] == "plant"]
+        self.assertIn("plant:993722637", plant_ids)  # Plant account with invoices.
+        self.assertIn("plant:439397737", plant_ids)  # Plant account without invoice evidence.
+        self.assertEqual(len(plant_ids), len(set(plant_ids)))  # Accounts, not raw mobile/fixed row duplicates.
+        self.assertGreater(result["metrics"]["account_count"], result["metrics"]["invoice_account_count"])
+
+    def test_plant_only_account_is_heuristic_not_no_exception(self) -> None:
+        result = self.service.customer_billing_check("CLIENT_00434")
+        finding = next(
+            item for item in result["findings"]
+            if item["type"] == "PLANT_WITHOUT_BILLING_EVIDENCE" and item["observed_value"]["account"] == "439397737"
+        )
+        self.assertEqual(finding["rule_category"], "HEURISTIC")
+        self.assertEqual(finding["observed_value"]["invoice_evidence_count"], 0)
+        self.assertIn("no prueba servicio no facturado", finding["message"])
+        self.assertIn("cobertura temporal", finding["recommended_validation"])
+
+    def test_explicit_plant_only_account_is_in_scope(self) -> None:
+        result = self.service.customer_billing_check("CLIENT_00434", "439397737")
+        self.assertEqual(result["metrics"]["account_count"], 1)
+        self.assertEqual(result["metrics"]["invoice_count"], 0)
+        self.assertIn("PLANT_WITHOUT_BILLING_EVIDENCE", {item["type"] for item in result["findings"]})
+
     def test_credit_note_links_to_invoice(self) -> None:
         result = self.service.credit_note_review(invoice_id="S1AA-0052649961")
         self.assertEqual(result["metrics"]["credit_note_count"], 1)

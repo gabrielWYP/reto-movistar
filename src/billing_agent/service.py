@@ -213,12 +213,35 @@ class BillingService:
             raise KeyError(f"Cliente no encontrado: {customer_id}")
         account = account_id.strip() if account_id else None
         invoices = [item for item in self._invoices_as_of(as_of) if item.customer == customer and (not account or item.account == account)]
-        account_keys = {(customer, item.account) for item in invoices} | ({(customer, account)} if account else set())
+        invoice_account_keys = {(customer, item.account) for item in invoices}
+        plant_account_keys = {key for key in self.model.all_plant_accounts() if key[0] == customer}
+        # Without an account filter, customer scope must include all available plant
+        # accounts as well as billed accounts. Set semantics avoid artificial account
+        # duplication while plant evidence retains every raw plant row.
+        account_keys = {(customer, account)} if account else invoice_account_keys | plant_account_keys
         evidence: list[dict[str, Any]] = [{"id": "customer_master", "type": "customer", "value": {"customer": customer, "source_ref": source_ref(self.model.customers[customer])}}]
         findings: list[dict[str, Any]] = []
         for key in sorted(account_keys):
             plants = self.model.plant_rows(*key)
-            evidence.append({"id": f"plant:{key[1]}", "type": "plant", "value": self._plant_evidence(plants)})
+            plant_ref = f"plant:{key[1]}"
+            plant_evidence = self._plant_evidence(plants)
+            evidence.append({"id": plant_ref, "type": "plant", "value": plant_evidence})
+            has_invoice = key in invoice_account_keys
+            if plants and not has_invoice:
+                findings.append(finding(
+                    "PLANT_WITHOUT_BILLING_EVIDENCE", "LOW", HEURISTIC,
+                    "La cuenta tiene planta en el extracto pero no evidencia de factura hasta el corte; no prueba servicio no facturado ni fuga de ingresos.",
+                    [plant_ref],
+                    "Cuenta presente en Planta y sin factura del cliente-cuenta dentro del corte seleccionado.",
+                    "Validar cobertura temporal, vigencia contractual y sistema de origen antes de escalar el caso.",
+                    {
+                        "account": key[1],
+                        "plant_record_count": len(plants),
+                        "plant_types": sorted({item["plant_type"] for item in plant_evidence}),
+                        "invoice_evidence_count": 0,
+                        "as_of_date": as_of,
+                    },
+                ))
         for item in sorted(invoices, key=lambda value: (value.issued_at or date.min, value.document)):
             ref = f"invoice:{item.document}"
             notes = self._notes_for_invoice(item.document, as_of)
@@ -248,7 +271,7 @@ class BillingService:
         return AgentResponse(
             operation="customer_billing_check", as_of_date=as_of, entity={"type": "customer", "id": customer, "account_id": account},
             status={"billing_assurance": status},
-            metrics={"invoice_count": len(invoices), "account_count": len({item.account for item in invoices}), "credit_note_count": sum(len(self._notes_for_invoice(item.document, as_of)) for item in invoices)},
+            metrics={"invoice_count": len(invoices), "account_count": len(account_keys), "invoice_account_count": len(invoice_account_keys), "plant_account_count": len(plant_account_keys if not account else ({(customer, account)} & plant_account_keys)), "credit_note_count": sum(len(self._notes_for_invoice(item.document, as_of)) for item in invoices)},
             findings=findings,
             recommended_actions=[{"action": "review_document_evidence", "reason": "Validar cada excepción usando el documento y registro fuente enlazados."}],
             evidence=evidence, data_quality=self._quality(as_of),
