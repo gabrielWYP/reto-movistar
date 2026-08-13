@@ -1,0 +1,106 @@
+name: Deploy to K3S
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-k3s-production
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Select immutable release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.release.outputs.image-tag }}
+      source-sha: ${{ steps.release.outputs.source-sha }}
+    steps:
+      - name: Resolve source commit
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT_NAME}" = "workflow_run" ]; then
+            source_sha="${RUN_SHA}"
+          else
+            source_sha="${DISPATCH_SHA}"
+          fi
+          test -n "${source_sha}"
+          source_sha="${source_sha,,}"
+          [[ "${source_sha}" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::Invalid source commit SHA"
+            exit 1
+          }
+          echo "source-sha=${source_sha}" >> "${GITHUB_OUTPUT}"
+          echo "image-tag=main-${source_sha:0:12}" >> "${GITHUB_OUTPUT}"
+
+  build:
+    name: Build application image
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.source-sha }}
+
+      - name: Validate container contract
+        run: test -f Dockerfile
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish immutable image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/gabrielwyp/reto-movistar:${{ needs.release.outputs.image-tag }}
+          cache-from: type=gha,scope=reto-movistar
+          cache-to: type=gha,mode=max,scope=reto-movistar
+          provenance: mode=max
+          sbom: true
+
+  deploy:
+    name: Deploy immutable release
+    needs:
+      - release
+      - build
+    uses: gabrielwyp/K3S_Infra/.github/workflows/deploy-movistar.yml@main
+    with:
+      image-tag: ${{ needs.release.outputs.image-tag }}
+      kube-namespace: reto-movistar
+      public-host: reto-movistar.ikigais.app
+    secrets:
+      KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+      GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
