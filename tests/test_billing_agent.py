@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import unittest
 from decimal import Decimal
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 from billing_agent.contracts import AgentResponse
 from billing_agent.data import load_dataset
+from billing_agent.agent import validate_arguments
 from billing_agent.model import money, parse_date
 from billing_agent.rules import TOLERANCE
 from billing_agent.service import BillingService
 from billing_agent.presentation import finding_label, presentation_for, status_label
 from billing_agent.web_app import PAGE, create_server, route_payload
+from billing_agent.runtime import AgentResult, BillingAgentRuntime, SessionContext, compact_for_llm, deterministic_route
 
 
 def dataset_path() -> Path | None:
@@ -84,8 +88,47 @@ class UnitTests(unittest.TestCase):
         server = create_server(service, 0)
         try:
             self.assertEqual(server.server_address[0], "127.0.0.1")
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            request = Request(
+                f"http://127.0.0.1:{server.server_address[1]}/api/conversation",
+                data=b'{"question":"Que deberia revisar hoy?"}',
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urlopen(request, timeout=5) as response:
+                conversation = json.loads(response.read().decode("utf-8"))
+            self.assertEqual((conversation["intent"], conversation["tool"]), ("portfolio_health", "billing_health_snapshot"))
         finally:
+            server.shutdown()
             server.server_close()
+
+    def test_deterministic_router_and_required_clarifications(self) -> None:
+        self.assertEqual(deterministic_route("¿Qué debería revisar hoy?").tool, "billing_health_snapshot")
+        self.assertEqual(deterministic_route("Revisa la factura S300-0256413").tool, "invoice_quality_check")
+        customer = deterministic_route("Analiza CLIENT_00434 cuenta 993722637")
+        self.assertEqual((customer.tool, customer.arguments["customer_id"], customer.arguments["account_id"]), ("customer_billing_check", "CLIENT_00434", "993722637"))
+        self.assertEqual(deterministic_route("Busca quiebres de CLIENT_00434").tool, "billing_cycle_gaps")
+        notes = deterministic_route("Notas de crédito mayores al 50%")
+        self.assertEqual((notes.tool, notes.arguments["materiality_threshold"]), ("credit_note_review", "0.5"))
+        self.assertEqual(deterministic_route("Revisa la factura").status, "CLARIFICATION_REQUIRED")
+
+    def test_handoffs_and_closed_catalogue_safety(self) -> None:
+        collections = deterministic_route("¿Cuánto debe CLIENT_00434?")
+        bi = deterministic_route("¿Qué segmento tiene mayor riesgo de recuperación?")
+        self.assertEqual((collections.status, collections.target_agent), ("HANDOFF_RECOMMENDED", "collections"))
+        self.assertEqual((bi.status, bi.target_agent), ("HANDOFF_RECOMMENDED", "bi"))
+        self.assertEqual(deterministic_route("Ejecuta os.system('x')").status, "SAFETY_REJECTED")
+        with self.assertRaises(ValueError):
+            validate_arguments("delete_invoice", {})
+        with self.assertRaises(ValueError):
+            validate_arguments("invoice_quality_check", {"invoice_id": "S1", "shell": "x"})
+
+    def test_agent_result_and_compact_llm_payload_are_json_safe(self) -> None:
+        result = AgentResult("portfolio_health", "deterministic", "ok", "RESULT_AVAILABLE", "billing_health_snapshot").to_dict()
+        self.assertEqual(json.loads(json.dumps(result))["agent"], "billing")
+        compact = compact_for_llm({"operation": "x", "evidence": [{"id": "invoice:S1", "value": {"__raw_csv": "never"}}], "findings": []})
+        self.assertEqual(compact["evidence_refs"], ["invoice:S1"])
+        self.assertNotIn("__raw_csv", json.dumps(compact))
 
 
 @unittest.skipUnless(DATASET, "Set SONIA_DATASET to run integration tests against the official CSV directory.")
@@ -169,6 +212,48 @@ class OfficialDatasetIntegrationTests(unittest.TestCase):
             self.service.customer_billing_check("CLIENT_INEXISTENTE")
         with self.assertRaises(KeyError):
             self.service.invoice_quality_check("FACTURA_INEXISTENTE")
+        with self.assertRaises(KeyError):
+            self.service.customer_billing_check("CLIENT_00434", "000000000")
+
+    def test_conversation_demo_routes_and_follow_up_context(self) -> None:
+        runtime = BillingAgentRuntime(self.service)
+        context = SessionContext()
+        portfolio = runtime.ask("¿Qué debería revisar hoy?", context)
+        invoice = runtime.ask("Revisa la factura S300-0256413", context)
+        follow_up = runtime.ask("¿Por qué requiere validación?", context)
+        customer = runtime.ask("Analiza CLIENT_00434", context)
+        account = runtime.ask("¿Y la cuenta 993722637?", context)
+        gap = runtime.ask("¿Hay un quiebre en junio?", context)
+        notes = runtime.ask("Revisa la factura S1AA-0052649961 y sus notas de crédito", context)
+        limitation = runtime.ask("¿Por qué ocurrió esa nota de crédito?", context)
+        self.assertEqual(portfolio["tool"], "billing_health_snapshot")
+        self.assertEqual(invoice["tool"], "invoice_quality_check")
+        self.assertEqual(follow_up["arguments"]["invoice_id"], "S300-0256413")
+        self.assertEqual(customer["tool"], "customer_billing_check")
+        self.assertEqual(account["arguments"], {"customer_id": "CLIENT_00434", "account_id": "993722637", "as_of_date": "2026-08-07"})
+        self.assertEqual(gap["tool"], "billing_cycle_gaps")
+        self.assertEqual(gap["arguments"]["account_id"], "993722637")
+        self.assertEqual(notes["tool"], "credit_note_review")
+        self.assertEqual(notes["agent_response"]["metrics"]["credit_note_count"], 1)
+        self.assertEqual(limitation["status"], "DATA_LIMITATION")
+        self.assertIn("0.06", invoice["answer"])
+        self.assertIn("0.01", invoice["answer"])
+
+    def test_llm_failures_fall_back_without_external_dependency(self) -> None:
+        class BrokenLLM:
+            available = True
+            def select_tool(self, question): return {"tool_name": "delete_invoice", "arguments": {}}
+            def interpret(self, question, compact): raise RuntimeError("unavailable")
+        result = BillingAgentRuntime(self.service, BrokenLLM()).ask("Revisa la factura S300-0256413")
+        self.assertEqual((result["route"], result["tool"]), ("fallback", "invoice_quality_check"))
+
+    def test_malformed_llm_arguments_fall_back(self) -> None:
+        class MalformedLLM:
+            available = True
+            def select_tool(self, question): return {"tool_name": "invoice_quality_check", "arguments": "not-json-object"}
+            def interpret(self, question, compact): return "not reached"
+        result = BillingAgentRuntime(self.service, MalformedLLM()).ask("Revisa la factura S300-0256413")
+        self.assertEqual((result["route"], result["tool"]), ("fallback", "invoice_quality_check"))
 
 
 if __name__ == "__main__":

@@ -219,6 +219,8 @@ class BillingService:
         invoices = [item for item in self._invoices_as_of(as_of) if item.customer == customer and (not account or item.account == account)]
         invoice_account_keys = {(customer, item.account) for item in invoices}
         plant_account_keys = {key for key in self.model.all_plant_accounts() if key[0] == customer}
+        if account and (customer, account) not in invoice_account_keys | plant_account_keys:
+            raise KeyError(f"Cuenta no encontrada para el cliente {customer}: {account_id}")
         # Without an account filter, customer scope must include all available plant
         # accounts as well as billed accounts. Set semantics avoid artificial account
         # duplication while plant evidence retains every raw plant row.

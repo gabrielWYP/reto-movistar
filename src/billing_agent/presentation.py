@@ -70,6 +70,79 @@ def deterministic_narrative(payload: dict[str, Any]) -> str:
     return "La vista reúne evidencia de cliente, cuentas, planta, documentos y ajustes para orientar la siguiente validación."
 
 
+def _money(value: Any) -> str:
+    return f"S/ {float(value or 0):,.2f}"
+
+
+def _invoice_evidence(payload: dict[str, Any]) -> dict[str, Any]:
+    return next((item.get("value", {}) for item in payload.get("evidence", []) if item.get("type") == "invoice"), {})
+
+
+def conversational_narrative(payload: dict[str, Any]) -> str:
+    """Grounded no-key explanation. It only formats values the deterministic tool returned."""
+    operation = payload.get("operation")
+    metrics = payload.get("metrics", {})
+    findings = payload.get("findings", [])
+    action = next((item.get("reason") for item in payload.get("recommended_actions", []) if item.get("reason")), "Revisar la evidencia disponible antes de escalar el caso.")
+    if operation == "billing_health_snapshot":
+        return (
+            f"Conclusión: el corte revisó {metrics.get('invoice_documents', 0):,} facturas y prioriza excepciones para validación.\n\n"
+            f"Por qué: hay {metrics.get('material_credit_note_count', 0):,} ajustes post-emisión materiales, "
+            f"{metrics.get('cycle_gap_candidates', 0):,} posibles quiebres documentales y "
+            f"{metrics.get('exception_counts', {}).get('ARITHMETIC_MISMATCH', 0):,} diferencias aritméticas.\n\n"
+            f"Siguiente acción: {action}\n\nCaveat: los hallazgos son candidatos de revisión; no representan errores financieros confirmados."
+        )
+    if operation == "invoice_quality_check":
+        invoice = _invoice_evidence(payload)
+        mismatch = next((item for item in findings if item.get("type") == "ARITHMETIC_MISMATCH"), None)
+        material = next((item for item in findings if item.get("type") == "MATERIAL_CREDIT_NOTE"), None)
+        conclusion = "Esta factura requiere validación documental." if findings else "No se detectaron excepciones documentales en esta factura."
+        lines = [f"Conclusión: {conclusion}"]
+        if mismatch:
+            observed = mismatch.get("observed_value", {})
+            lines.extend([
+                "",
+                f"Por qué: el total derivado difiere del total registrado por {_money(abs(float(observed.get('difference', 0))))}, superando la tolerancia de S/ 0.01.",
+                "",
+                f"Evidencia: Neto {_money(metrics.get('net'))}; IGV {_money(metrics.get('tax'))}; total derivado {_money(metrics.get('derived_total'))}; total registrado {_money(metrics.get('reported_total'))}; sistema {invoice.get('system') or 'no informado'}.",
+            ])
+        if material:
+            observed = material.get("observed_value", {})
+            lines.extend(["", f"Ajuste post-emisión: la nota de crédito vinculada representa {float(observed.get('ratio', 0)):.1%} del importe original."])
+        lines.extend(["", f"Siguiente acción: {action}", "", "Caveat: la validación documental no confirma un error financiero ni su causa."])
+        return "\n".join(lines)
+    if operation == "customer_billing_check":
+        gap = next((item for item in findings if item.get("type") == "BILLING_CYCLE_GAP"), None)
+        plant = next((item for item in findings if item.get("type") == "PLANT_WITHOUT_BILLING_EVIDENCE"), None)
+        lines = [
+            f"Conclusión: se reconstruyó el alcance del cliente con {metrics.get('account_count', 0)} cuentas, {metrics.get('invoice_count', 0)} facturas y {metrics.get('credit_note_count', 0)} notas de crédito.",
+        ]
+        if gap:
+            observed = gap.get("observed_value", {})
+            lines.extend(["", f"Se detectó un candidato de quiebre documental: {observed.get('before_period')} con evidencia, {observed.get('missing_period')} sin documento cíclico y {observed.get('after_period')} con evidencia."])
+        if plant:
+            lines.extend(["", "También existe planta sin evidencia de factura en el extracto; es una señal exploratoria, no una prueba de servicio no facturado."])
+        lines.extend(["", f"Siguiente acción: {action}", "", "Caveat: validar cobertura temporal, vigencia contractual y sistema de origen antes de concluir una incidencia."])
+        return "\n".join(lines)
+    if operation == "billing_cycle_gaps":
+        gap = next((item.get("value", {}) for item in payload.get("evidence", []) if item.get("type") == "cycle_gap"), {})
+        return (
+            f"Conclusión: se identificó un posible quiebre documental para {gap.get('customer', 'el alcance consultado')} / cuenta {gap.get('account', 'no informada')}.\n\n"
+            f"Evidencia: {gap.get('before_period')} · factura {gap.get('before_document')}; {gap.get('missing_period')} · sin evidencia de factura cíclica; "
+            f"{gap.get('after_period')} · factura {gap.get('after_document')}.\n\n"
+            f"Siguiente acción: {action}\n\nCaveat: es un candidato HEURISTIC; no prueba que el periodo debió facturarse ni una fuga de ingresos."
+        )
+    if operation == "credit_note_review":
+        material = next((item for item in findings if item.get("type") == "MATERIAL_CREDIT_NOTE"), None)
+        if material:
+            observed = material.get("observed_value", {})
+            detail = f"La nota de crédito representa {float(observed.get('ratio', 0)):.1%} del importe de la factura y supera el umbral de materialidad aplicado."
+        else:
+            detail = "Las notas de crédito encontradas están enlazadas documentalmente a sus facturas afectadas."
+        return f"Conclusión: se revisaron {metrics.get('credit_note_count', 0)} ajustes post-emisión.\n\nPor qué: {detail}\n\nSiguiente acción: {action}\n\nCaveat: una nota de crédito no confirma un error de facturación y el dataset no contiene su motivo."
+    return deterministic_narrative(payload)
+
+
 def presentation_for(payload: dict[str, Any]) -> dict[str, Any]:
     """Add display-only fields without changing or replacing the public AgentResponse."""
     status = payload.get("status", {})

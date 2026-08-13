@@ -1,4 +1,4 @@
-# SON-IA Billing Assurance Agent — Web MVP v0.2
+# SON-IA Billing Assurance Agent — Conversational MVP v0.3
 
 Agente determinístico y auditable para responder: **¿la facturación disponible presenta excepciones documentales que requieren revisión?**
 
@@ -30,6 +30,44 @@ Vistas:
 - **Notas de crédito:** ranking de ajustes post-emisión por el umbral heurístico existente.
 
 La UI consume exclusivamente las cinco tools de `BillingService`; no recalcula tolerancias, materialidad, joins ni severidades. La trazabilidad técnica completa del `AgentResponse` está disponible de manera expandible.
+
+## Modo conversacional
+
+La vista **Asistente SON-IA** añade una capa agéntica ligera encima del core, sin reemplazar ninguna vista ni regla existente. Funciona sin API key mediante un router local determinístico y una explicación evidence-first. Ejemplos:
+
+- `¿Qué debería revisar hoy?`
+- `Revisa la factura S300-0256413`
+- `Analiza CLIENT_00434`
+- `¿Y la cuenta 993722637?` (después de consultar el cliente)
+- `Busca quiebres de CLIENT_00434`
+- `Revisa las notas de crédito materiales`
+
+Arquitectura:
+
+```text
+Pregunta → BillingAgentRuntime → router/registro cerrado → BillingService
+         → AgentResponse intacto → explicación grounded → Web local o Supervisor futuro
+```
+
+El runtime sólo permite una tool principal por consulta:
+
+- `billing_health_snapshot`
+- `customer_billing_check`
+- `invoice_quality_check`
+- `billing_cycle_gaps`
+- `credit_note_review`
+
+Los intents son `portfolio_health`, `customer_review`, `invoice_review`, `cycle_gap_review`, `credit_note_review`, `out_of_scope` y `clarification_required`. El contexto es sólo de sesión local y guarda identificadores/resultados recientes, nunca CSV completos.
+
+Consultas de deuda, pago, mora, cobranza o recaudo devuelven `HANDOFF_RECOMMENDED` hacia `collections`; consultas de segmento, concentración, estrategia o riesgo de recupero se derivan hacia `bi`. Facturación no abre ni usa la tabla de Pagos.
+
+### Privacidad y LLM opcional
+
+El producto base no requiere LLM ni API key: muestra **Modo local determinístico**. Si se configura `OPENAI_API_KEY`, la interfaz muestra **Modo IA: LLM + tools**. El modelo se elige con `SONIA_BILLING_MODEL` (por defecto `gpt-5.6-terra`) y es opcional.
+
+El proveedor sólo recibe en fase 1 la pregunta y los esquemas cerrados de las cinco tools. En fase 2 recibe un resultado compacto: operación, métricas, hallazgos, acciones, IDs de evidencia y limitaciones. No se envían CSV, modelo canónico, filas fuente completas, pagos ni herramientas arbitrarias; las llamadas llevan `store: false`. Si la API falla, devuelve JSON inválido, propone una tool no autorizada o argumentos inválidos, el runtime vuelve al router y explicación determinísticos.
+
+La respuesta pública `AgentResult` contiene `agent`, `intent`, `route`, `tool`, `arguments`, `answer`, `status`, `agent_response` intacto y `trace`. El bloque **Ver razonamiento operativo** muestra intent, router, tool, argumentos, estado, referencias y duración; no expone chain-of-thought.
 
 ## Alcance y fuentes
 
@@ -111,4 +149,4 @@ CSV oficiales → BillingService → 5 tools determinísticas → AgentResponse 
 
 El extracto no contiene tarifario/PxQ contractual, motivo de NC, cobertura histórica completa, identificadores individuales de línea móvil ni una prueba del importe esperado. Por ello el agente recomienda validaciones humanas y nunca convierte una anomalía documental en pérdida o error confirmado.
 
-No hay LLM, API de OpenAI, chatbot, integración con Supervisor/BI/Cobranzas, pagos, ML ni acciones automáticas en esta versión. Esos elementos permanecen fuera del MVP web actual.
+No hay integración activa con Supervisor/BI/Cobranzas, pagos, ML ni acciones automáticas. El LLM es opcional y nunca calcula ni sustituye las reglas determinísticas. La integración multi-agente sigue fuera de este MVP.
