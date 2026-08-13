@@ -1,16 +1,19 @@
 # Propuesta inicial de arquitectura y organización - SON-IA
 
-SON-IA se implementará inicialmente como un **monolito modular con orquestación agéntica controlada**, desplegado como una sola aplicación pública. La solución demostrará un flujo E2E de facturación, cobranza y recaudo con aprobaciones humanas, trazabilidad y métricas, evitando la complejidad prematura de microservicios.
+SON-IA se implementa como una arquitectura **cliente-servidor de dos pods** con
+un backend modular y orquestación agéntica controlada. La interfaz es el único
+punto público; Facturación, Cobranzas y BI comparten la API y no se convierten
+en microservicios independientes.
 
 ## 1. Decisión ejecutiva
 
 | Tema | Decisión inicial |
 |---|---|
 | Alcance del MVP | Un caso E2E demostrable: validar PxQ, aprobar, simular emisión, identificar pago, conciliar y mostrar trazabilidad. |
-| Arquitectura | Monolito modular en Python/FastAPI con frontend SPA servido por la misma aplicación. |
+| Arquitectura | SPA estática en Nginx y backend modular en Python/FastAPI, desplegados en dos pods. |
 | Entrada pública | Un único host `reto-movistar.ikigais.app`, puerto interno `8080`. |
 | Orquestación | Supervisor con máquina de estados explícita; el LLM propone, pero no decide transacciones irreversibles. |
-| Agentes | Facturación, Cobranzas, Recaudo/Conciliación y BI, implementados como módulos internos. |
+| Agentes | Facturación, Cobranzas/Conciliación y BI, implementados como módulos internos del backend. |
 | Intervención humana | Obligatoria antes de emitir una factura, aplicar un pago o aceptar una excepción material. |
 | Datos | Solo datos ficticios o anonimizados durante el hackatón. |
 | Integraciones | Adaptadores simulados detrás de interfaces para facturación, correo, banco y fuentes SQL. |
@@ -27,7 +30,7 @@ El reto describe un ecosistema amplio. Para entregar una solución creíble, el 
 4. Una persona aprueba o rechaza el insumo desde la plataforma.
 5. El sistema simula la emisión de la factura mediante un adaptador controlado.
 6. El agente de Cobranzas clasifica un correo ficticio que informa un pago.
-7. El agente de Recaudo compara factura, depósito y cliente, y propone la conciliación.
+7. El agente de Cobranzas compara factura, depósito y cliente, y propone la conciliación.
 8. Una persona confirma la aplicación del pago.
 9. El agente de BI muestra el estado E2E, tiempos, excepciones y oportunidad de recupero.
 
@@ -37,18 +40,16 @@ Este recorrido cubre los tres momentos solicitados: asesoría previa, ejecución
 
 ```mermaid
 flowchart LR
-    U["Usuario de negocio"] --> WEB["Web SON-IA"]
-    WEB --> API["API FastAPI - entrada única"]
+    U["Usuario de negocio"] --> WEB["Pod front - Nginx"]
+    WEB --> API["Pod back - FastAPI"]
 
     API --> SUP["Supervisor - máquina de estados"]
     SUP --> FAC["Agente Facturación"]
     SUP --> COB["Agente Cobranzas"]
-    SUP --> REC["Agente Recaudo y conciliación"]
     SUP --> BI["Agente BI"]
 
     FAC --> SK["Skills compartidos: extracción, reglas, cálculo y clasificación"]
     COB --> SK
-    REC --> SK
     BI --> SK
 
     SUP --> HITL["Bandeja de aprobaciones humanas"]
@@ -63,7 +64,8 @@ flowchart LR
 ### 3.1 Entrada y experiencia de usuario
 
 - Una SPA ligera presenta casos, tareas pendientes, aprobaciones, evidencias y KPIs.
-- FastAPI sirve la SPA y expone `/api/*` y `GET /health` desde el mismo contenedor.
+- Nginx sirve la SPA y enruta `/api/*` y `GET /health` al backend.
+- FastAPI se mantiene como servicio interno y registra los tres agentes.
 - No se exponen directamente agentes, base de datos ni adaptadores.
 - Cada pantalla debe mostrar qué hizo el sistema, con qué evidencia y qué decisión requiere una persona.
 
@@ -87,8 +89,7 @@ El supervisor podrá seleccionar el siguiente agente y preparar una recomendaci�
 | Agente | Responsabilidad | Salida estructurada |
 |---|---|---|
 | Facturación | Extraer PxQ, validar planta, tarifa, periodo y consistencia post-cálculo. | Campos, reglas aplicadas, evidencias, errores y nivel de confianza. |
-| Cobranzas | Clasificar comunicaciones, detectar intención de pago y asociar cliente/documento. | Tipo de mensaje, entidades, prioridad y acción propuesta. |
-| Recaudo/Conciliación | Comparar factura, depósito, monto, fecha y referencia bancaria. | Coincidencias, diferencias y propuesta de aplicación. |
+| Cobranzas/Conciliación | Clasificar comunicaciones, priorizar cartera y comparar factura y pago. | Entidades, prioridad, coincidencias, diferencias y acción propuesta. |
 | BI | Calcular KPIs, identificar quiebres y resumir oportunidades. | Métricas, alertas y explicación basada en datos registrados. |
 
 Las capacidades de lectura de archivos, cálculo, búsqueda y validación se implementarán como **skills reutilizables**, no como agentes adicionales. Esto evita una red de agentes difícil de depurar.
@@ -174,28 +175,28 @@ reto-movistar/
 │   ├── expected/
 │   ├── rubrics/
 │   └── reports/
-├── frontend/
-│   ├── src/
-│   └── tests/
-├── src/
-│   └── sonia/
-│       ├── entrypoints/
-│       ├── domain/
-│       ├── application/
-│       ├── agents/
-│       ├── skills/
-│       ├── integrations/
-│       ├── persistence/
-│       ├── observability/
-│       └── config.py
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   ├── contract/
-│   └── end_to_end/
+├── front/
+│   ├── agents/
+│   │   ├── billing/
+│   │   ├── collections/
+│   │   └── bi/
+│   ├── assets/
+│   └── Dockerfile
+├── back/
+│   ├── src/sonia/
+│   │   ├── agents/
+│   │   │   ├── billing/
+│   │   │   ├── collections/
+│   │   │   └── bi/
+│   │   ├── application/
+│   │   ├── domain/
+│   │   └── entrypoints/
+│   ├── tests/
+│   ├── Dockerfile
+│   └── pyproject.toml
 ├── scripts/
 ├── Dockerfile
-├── pyproject.toml
+├── compose.yaml
 └── .github/
     ├── CODEOWNERS
     ├── pull_request_template.md
@@ -208,7 +209,7 @@ El equipo recomendado tiene un responsable técnico y tres responsables funciona
 
 | Rol | Propiedad principal | Puede editar directamente |
 |---|---|---|
-| Responsable técnico | Arquitectura, API, agentes, seguridad, CI/CD e integración. | `src/`, `frontend/`, `tests/`, `.github/`, `Dockerfile`. |
+| Responsable técnico | Arquitectura, API, agentes, seguridad, CI/CD e integración. | `back/`, `front/`, `.github/`, `Dockerfile`, `compose.yaml`. |
 | Persona 1 - Facturación | Proceso PxQ, reglas, excepciones y criterios de aprobación. | `business/01-facturacion/`, casos sintéticos relacionados. |
 | Persona 2 - Cobranzas/Recaudo | Mensajes, pagos, conciliaciones, quiebres y prioridades. | `business/02-cobranzas-recaudo/`, casos sintéticos relacionados. |
 | Persona 3 - Demo/Calidad | Journey, UX, criterios de aceptación, evidencias y pitch. | `business/03-demo-calidad/`, `evals/rubrics/`, documentación. |
@@ -224,7 +225,7 @@ El equipo recomendado tiene un responsable técnico y tres responsables funciona
 
 ### Límites de seguridad y ownership
 
-- `CODEOWNERS` exigirá revisión técnica para `src/`, `frontend/`, `.github/`, `Dockerfile` e infraestructura.
+- `CODEOWNERS` exigirá revisión técnica para `back/`, `front/`, `.github/`, Dockerfiles e infraestructura.
 - Ningún secreto se almacena en el repositorio.
 - `data/synthetic/` no puede contener nombres, correos, teléfonos, cuentas o identificadores reales.
 - Los prompts se revisan como código y deben tener versión y casos de evaluación.
@@ -313,7 +314,7 @@ then:
 - Aplicación real de pagos o movimientos bancarios.
 - Conexión directa a sistemas internos de Movistar.
 - Procesamiento de datos personales o estratégicos reales.
-- Microservicios independientes por agente.
+- Microservicios o pods independientes por agente.
 - Entrenamiento de modelos predictivos sin dataset temporal validado.
 - Autonomía sin aprobación para acciones financieras.
 

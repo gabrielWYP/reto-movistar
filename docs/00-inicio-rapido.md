@@ -14,7 +14,7 @@ Este repositorio separa decisiones de negocio, datos sintéticos y código para 
 
 | Rol | Carpeta principal |
 |---|---|
-| Responsable técnico | `src/`, `frontend/`, `tests/`, `.github/`, `Dockerfile` |
+| Responsable técnico | `back/`, `front/`, `.github/`, Dockerfiles y `compose.yaml` |
 | Facturación | `business/01-facturacion/` y `data/synthetic/billing/` |
 | Cobranzas/Recaudo | `business/02-cobranzas-recaudo/` y datos sintéticos relacionados |
 | Demo/Calidad | `business/03-demo-calidad/` y `evals/` |

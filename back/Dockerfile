@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SONIA_ENVIRONMENT=production \
     SONIA_HOST=0.0.0.0 \
     SONIA_PORT=8080 \
-    SONIA_FRONTEND_DIR=/app/front
+    SONIA_FRONTEND_DIR=/app/no-frontend
 
 WORKDIR /app
 
@@ -14,7 +14,6 @@ RUN groupadd --gid 1001 sonia \
 
 COPY back/pyproject.toml back/README.md LICENSE ./
 COPY back/src ./src
-COPY front ./front
 
 RUN pip install --no-cache-dir .
 

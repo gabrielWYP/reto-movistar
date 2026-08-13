@@ -1,12 +1,15 @@
 # ADR-001: Monolito modular para el MVP
 
-- Estado: Aceptada
+- Estado: Reemplazada por ADR-002
 - Fecha: 2026-08-11
 - Responsables: equipo SON-IA
 
 ## Decisión
 
 SON-IA se desplegará inicialmente como una sola aplicación FastAPI en el puerto `8080`. El supervisor, los agentes, skills, adaptadores y persistencia estarán separados por módulos internos, no por servicios de red.
+
+Esta decisión describió el bootstrap inicial. ADR-002 conserva el backend modular,
+pero separa la entrega web y la API en dos pods.
 
 ## Motivo
 
