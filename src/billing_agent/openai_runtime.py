@@ -15,7 +15,35 @@ from urllib.request import Request, urlopen
 from .agent import SYSTEM_PROMPT, tool_schemas
 
 API_URL = "https://api.openai.com/v1/responses"
-DEFAULT_MODEL = "gpt-5.6-terra"
+DEFAULT_MODEL = "gpt-5"
+
+
+def extract_output_text(response: dict[str, Any]) -> str:
+    """Aggregate text from the raw HTTP Responses API JSON shape.
+
+    ``output_text`` is an SDK convenience property, so urllib callers must walk
+    completed ``message`` output items and their ``output_text`` content parts.
+    Unexpected items are ignored rather than treated as executable instructions.
+    """
+    if not isinstance(response, dict):
+        return ""
+    texts: list[str] = []
+    output = response.get("output")
+    if not isinstance(output, list):
+        return ""
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "message":
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "output_text":
+                continue
+            text = part.get("text")
+            if isinstance(text, str) and text.strip():
+                texts.append(text.strip())
+    return "\n".join(texts)
 
 
 class OpenAIRuntime:
@@ -64,7 +92,7 @@ class OpenAIRuntime:
             "input": [{"role": "user", "content": [{"type": "input_text", "text": f"Pregunta: {question}\nResultado compacto: {json.dumps(compact_result, ensure_ascii=False)}"}]}],
             "max_output_tokens": 500,
         }, key)
-        answer = response.get("output_text", "").strip()
+        answer = extract_output_text(response)
         if not answer:
             raise RuntimeError("El modelo no devolvió una interpretación textual.")
         return answer

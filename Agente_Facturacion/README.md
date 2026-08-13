@@ -63,11 +63,11 @@ Consultas de deuda, pago, mora, cobranza o recaudo devuelven `HANDOFF_RECOMMENDE
 
 ### Privacidad y LLM opcional
 
-El producto base no requiere LLM ni API key: muestra **Modo local determinístico**. Si se configura `OPENAI_API_KEY`, la interfaz muestra **Modo IA: LLM + tools**. El modelo se elige con `SONIA_BILLING_MODEL` (por defecto `gpt-5.6-terra`) y es opcional.
+El producto base no requiere LLM ni API key: muestra **Modo local determinístico**. Si se configura `OPENAI_API_KEY`, la interfaz muestra **Modo IA: LLM + tools**. El modelo se elige con `SONIA_BILLING_MODEL` (por defecto `gpt-5`) y es opcional. El adaptador HTTP recorre explícitamente `output → message → content → output_text`; no depende de la propiedad de conveniencia del SDK.
 
 El proveedor sólo recibe en fase 1 la pregunta y los esquemas cerrados de las cinco tools. En fase 2 recibe un resultado compacto: operación, métricas, hallazgos, acciones, IDs de evidencia y limitaciones. No se envían CSV, modelo canónico, filas fuente completas, pagos ni herramientas arbitrarias; las llamadas llevan `store: false`. Si la API falla, devuelve JSON inválido, propone una tool no autorizada o argumentos inválidos, el runtime vuelve al router y explicación determinísticos.
 
-La respuesta pública `AgentResult` contiene `agent`, `intent`, `route`, `tool`, `arguments`, `answer`, `status`, `agent_response` intacto y `trace`. El bloque **Ver razonamiento operativo** muestra intent, router, tool, argumentos, estado, referencias y duración; no expone chain-of-thought.
+La respuesta pública `AgentResult` contiene `agent`, `intent`, `route`, `tool`, `arguments`, `answer`, `status`, `agent_response` intacto y `trace`. El bloque **Ver razonamiento operativo** muestra intent, router, tool, argumentos, estado, referencias y duración; no expone chain-of-thought. La Web MVP conserva una única sesión conversacional local para la demo actual; el contexto se pierde al reiniciar el servidor y no constituye un sistema de sesiones multiusuario.
 
 ## Alcance y fuentes
 

@@ -5,7 +5,10 @@ import os
 import threading
 import unittest
 from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from billing_agent.contracts import AgentResponse
@@ -17,6 +20,7 @@ from billing_agent.service import BillingService
 from billing_agent.presentation import finding_label, presentation_for, status_label
 from billing_agent.web_app import PAGE, create_server, route_payload
 from billing_agent.runtime import AgentResult, BillingAgentRuntime, SessionContext, compact_for_llm, deterministic_route
+from billing_agent.openai_runtime import API_URL, DEFAULT_MODEL, OpenAIRuntime, extract_output_text
 
 
 def dataset_path() -> Path | None:
@@ -129,6 +133,54 @@ class UnitTests(unittest.TestCase):
         compact = compact_for_llm({"operation": "x", "evidence": [{"id": "invoice:S1", "value": {"__raw_csv": "never"}}], "findings": []})
         self.assertEqual(compact["evidence_refs"], ["invoice:S1"])
         self.assertNotIn("__raw_csv", json.dumps(compact))
+
+    def test_openai_http_response_text_parser(self) -> None:
+        raw = {
+            "output": [
+                {"type": "function_call", "name": "ignored"},
+                {"type": "message", "content": [
+                    {"type": "refusal", "refusal": "ignored"},
+                    {"type": "output_text", "text": "Conclusión basada en evidencia."},
+                    {"type": "output_text", "text": "Siguiente validación: revisar origen."},
+                ]},
+            ]
+        }
+        self.assertEqual(extract_output_text(raw), "Conclusión basada en evidencia.\nSiguiente validación: revisar origen.")
+        self.assertEqual(extract_output_text({"output": [{"type": "message", "content": [{"type": "refusal"}]}]}), "")
+        self.assertEqual(extract_output_text({"output": {"not": "a list"}}), "")
+        self.assertEqual(extract_output_text({"output": [None, {"type": "message", "content": "bad"}]}), "")
+
+    def test_openai_adapter_is_configurable_private_and_handles_http_error(self) -> None:
+        calls: list[dict] = []
+        raw_message = {"output": [{"type": "message", "content": [{"type": "output_text", "text": "Explicación mockeada."}]}]}
+
+        def post(payload, key):
+            calls.append(payload)
+            if "tools" in payload:
+                return {"output": [{"type": "function_call", "name": "invoice_quality_check", "arguments": '{"invoice_id":"S300-0256413"}'}]}
+            return raw_message
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+            runtime = OpenAIRuntime(post=post)
+            selected = runtime.select_tool("Revisa la factura S300-0256413")
+            compact = compact_for_llm({"operation": "invoice_quality_check", "evidence": [{"id": "invoice:S300-0256413", "value": {"__source_table": "raw-csv"}}]})
+            answer = runtime.interpret("Revisa la factura", compact)
+        self.assertEqual(DEFAULT_MODEL, "gpt-5")
+        self.assertEqual(selected["tool_name"], "invoice_quality_check")
+        self.assertEqual(answer, "Explicación mockeada.")
+        self.assertTrue(all(payload["store"] is False for payload in calls))
+        self.assertEqual(calls[0]["model"], "gpt-5")
+        self.assertNotIn("__source_table", json.dumps(calls[1]))
+        self.assertNotIn("raw-csv", json.dumps(calls[1]))
+        error = HTTPError(API_URL, 404, "Not Found", {}, BytesIO(b"{}"))
+        with patch("billing_agent.openai_runtime.urlopen", side_effect=error):
+            with self.assertRaises(RuntimeError):
+                OpenAIRuntime._http_post({}, "test-key")
+        with patch.dict(os.environ, {}, clear=True):
+            unavailable = OpenAIRuntime(post=post)
+            self.assertFalse(unavailable.available)
+            with self.assertRaises(RuntimeError):
+                unavailable.select_tool("consulta")
 
 
 @unittest.skipUnless(DATASET, "Set SONIA_DATASET to run integration tests against the official CSV directory.")
@@ -254,6 +306,33 @@ class OfficialDatasetIntegrationTests(unittest.TestCase):
             def interpret(self, question, compact): return "not reached"
         result = BillingAgentRuntime(self.service, MalformedLLM()).ask("Revisa la factura S300-0256413")
         self.assertEqual((result["route"], result["tool"]), ("fallback", "invoice_quality_check"))
+
+    def test_openai_runtime_mocked_success_and_explanation_fallback(self) -> None:
+        calls: list[dict] = []
+
+        def success_post(payload, key):
+            calls.append(payload)
+            if "tools" in payload:
+                return {"output": [{"type": "function_call", "name": "invoice_quality_check", "arguments": '{"invoice_id":"S300-0256413"}'}]}
+            return {"output": [{"type": "message", "content": [{"type": "output_text", "text": "Explicación HTTP mockeada y sustentada."}]}]}
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+            result = BillingAgentRuntime(self.service, OpenAIRuntime(post=success_post)).ask("Revisa la factura S300-0256413")
+        self.assertEqual((result["route"], result["tool"], result["answer"]), ("llm", "invoice_quality_check", "Explicación HTTP mockeada y sustentada."))
+        self.assertTrue(all(payload["store"] is False for payload in calls))
+        second_request = json.dumps(calls[1], ensure_ascii=False)
+        self.assertNotIn("__source_table", second_request)
+        self.assertNotIn("source_ref", second_request)
+
+        def no_text_post(payload, key):
+            if "tools" in payload:
+                return {"output": [{"type": "function_call", "name": "invoice_quality_check", "arguments": '{"invoice_id":"S300-0256413"}'}]}
+            return {"output": [{"type": "message", "content": [{"type": "refusal", "refusal": "No text"}]}]}
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True):
+            fallback = BillingAgentRuntime(self.service, OpenAIRuntime(post=no_text_post)).ask("Revisa la factura S300-0256413")
+        self.assertEqual((fallback["route"], fallback["tool"]), ("fallback", "invoice_quality_check"))
+        self.assertIn("0.06", fallback["answer"])
 
 
 if __name__ == "__main__":
