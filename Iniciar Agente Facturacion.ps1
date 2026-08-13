@@ -13,11 +13,21 @@ if (-not (Test-Path -LiteralPath $Dataset)) {
     exit 1
 }
 
-$Python = Get-Command python -ErrorAction SilentlyContinue
-if (-not $Python) {
-    Write-Host "No se encontró Python en PATH. Instala Python 3.11+ y vuelve a intentar." -ForegroundColor Red
-    exit 1
+$PythonCommand = Get-Command python -ErrorAction SilentlyContinue
+if ($PythonCommand) {
+    $Python = $PythonCommand.Source
+} else {
+    # Codex desktop can provide a managed Python runtime even when Python is not
+    # installed in PATH. Keep the normal PATH resolution as the first option.
+    $CodexPython = Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+    if (Test-Path -LiteralPath $CodexPython) {
+        $Python = $CodexPython
+    } else {
+        Write-Host "No se encontró Python en PATH ni el runtime administrado por Codex." -ForegroundColor Red
+        Write-Host "Instala Python 3.11+ o inicia Codex para que configure su runtime local." -ForegroundColor Red
+        exit 1
+    }
 }
 
 $env:PYTHONPATH = Join-Path $Root "src"
-& $Python.Source -m billing_agent.web_app --dataset $Dataset --port 8503 --open
+& $Python -m billing_agent.web_app --dataset $Dataset --port 8503 --open

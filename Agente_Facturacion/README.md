@@ -19,6 +19,8 @@ Para una persona no técnica, ejecutar `Iniciar Agente Facturacion.cmd` desde la
 .\Iniciar Agente Facturacion.ps1 -Dataset "C:\ruta\DATASET"
 ```
 
+El launcher busca primero `python` en PATH y luego el runtime local administrado por Codex. Si ninguno está disponible, instala Python 3.11+ antes de iniciar la aplicación.
+
 El navegador se abre automáticamente. Para cerrar la aplicación, volver a la consola y presionar `Ctrl+C`.
 
 Vistas:
