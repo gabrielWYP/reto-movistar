@@ -1,0 +1,21 @@
+version: 1
+scenarios:
+  - id: E2E-001
+    name: Journey principal completo
+    given: existe un PxQ válido y un cliente ficticio
+    when: el usuario aprueba la emisión y luego confirma el pago
+    then:
+      - se crea una factura simulada
+      - se registra quién aprobó y cuándo
+      - se propone una conciliación con evidencia
+      - el caso termina en CLOSED
+      - la línea de auditoría conserva todas las transiciones
+
+  - id: E2E-002
+    name: Diferencia de monto bloqueada
+    given: el pago ficticio no coincide con el total de la factura
+    when: el agente de recaudo evalúa la conciliación
+    then:
+      - el pago no se aplica
+      - el caso pasa a MANUAL_REVIEW
+      - la diferencia se muestra al usuario

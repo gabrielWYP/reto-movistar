@@ -1,0 +1,5 @@
+message_id,subject,body,expected_intent,invoice_reference,amount,currency,expected_review
+MSG-001,Pago realizado,Realizamos el pago de FAC-DEMO-001 por 1000 PEN.,PAYMENT_REPORTED,FAC-DEMO-001,1000.00,PEN,false
+MSG-002,Compromiso de pago,Pagaremos la factura FAC-DEMO-002 el próximo viernes.,PAYMENT_PROMISE,FAC-DEMO-002,,,true
+MSG-003,Diferencia en factura,El total de FAC-DEMO-003 no coincide con nuestro contrato.,DISPUTE,FAC-DEMO-003,,,true
+MSG-004,Consulta comercial,Solicito información sobre un nuevo servicio.,IRRELEVANT,,,,true

@@ -1,0 +1,28 @@
+version: 1
+rules:
+  - id: PAYMENT-001
+    name: El pago coincide exactamente con factura y moneda
+    owner: cobranzas_recaudo
+    severity: blocker
+    inputs:
+      - invoice_reference
+      - invoice_amount
+      - payment_amount
+      - invoice_currency
+      - payment_currency
+    condition: invoice_amount == payment_amount and invoice_currency == payment_currency
+    on_failure: MANUAL_REVIEW
+    evidence_required:
+      - message_location
+      - payment_record
+
+  - id: PAYMENT-002
+    name: La referencia de factura está presente
+    owner: cobranzas_recaudo
+    severity: warning
+    inputs:
+      - invoice_reference
+    condition: invoice_reference is not empty
+    on_failure: NEEDS_INFORMATION
+    evidence_required:
+      - message_location
