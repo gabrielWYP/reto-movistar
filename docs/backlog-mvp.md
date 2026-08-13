@@ -32,7 +32,7 @@ Este backlog convierte la arquitectura aprobada en unidades verificables. El obj
 |---|---|---|---|---|---|
 | FND-01 | P0 | Crear estructura modular y contratos para colaboradores. | Técnico | - | DONE |
 | FND-02 | P0 | Exponer aplicación mínima y `GET /health` en `:8080`. | Técnico | FND-01 | DONE |
-| FND-03 | P0 | Añadir CI para lint, tipos, tests y build del contenedor. | Técnico | FND-02 | BACKLOG |
+| FND-03 | P0 | Añadir CI para lint, tipos, tests y build de contenedores. | Técnico | FND-02 | DONE |
 | FND-04 | P0 | Configurar plantillas de PR y ownership técnico. | Técnico | FND-01 | DONE |
 | SEC-01 | P0 | Aplicar política de datos sintéticos y escaneo de secretos. | Técnico + Demo/Calidad | FND-01 | READY |
 | DOM-01 | P0 | Modelar `Case` y estados permitidos. | Técnico | FND-01 | READY |
@@ -69,7 +69,7 @@ Este backlog convierte la arquitectura aprobada en unidades verificables. El obj
 
 **FND-01 - Estructura modular**
 
-- Las carpetas de negocio, datos, prompts, evaluaciones, frontend, código y tests existen en Git.
+- Las carpetas de negocio, datos, prompts, evaluaciones, `front`, `back` y tests existen en Git.
 - Cada colaborador funcional tiene una carpeta, ejemplos y límites de edición claros.
 - La arquitectura y el backlog son accesibles desde el README principal.
 

@@ -1,10 +1,9 @@
 # Technical boundaries
-/src/ @gabrielWYP
-/frontend/ @gabrielWYP
-/tests/ @gabrielWYP
+/back/ @gabrielWYP
+/front/ @gabrielWYP
 /.github/ @gabrielWYP
 /Dockerfile @gabrielWYP
-/pyproject.toml @gabrielWYP
+/compose.yaml @gabrielWYP
 
 # Business contracts still require technical review before becoming executable
 /business/ @gabrielWYP
