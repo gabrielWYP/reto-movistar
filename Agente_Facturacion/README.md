@@ -13,7 +13,7 @@ $env:PYTHONPATH = "src"
 python -m billing_agent.web_app --dataset "C:\ruta\DATASET" --port 8503 --open
 ```
 
-Para una persona no técnica, ejecutar [Iniciar Agente Facturacion.cmd](C:/Users/Acer/Documents/Codex/2026-08-11/ay/reto-movistar/Iniciar%20Agente%20Facturacion.cmd) o:
+Para una persona no técnica, ejecutar `Iniciar Agente Facturacion.cmd` desde la raíz del repositorio, o:
 
 ```powershell
 .\Iniciar Agente Facturacion.ps1 -Dataset "C:\ruta\DATASET"

@@ -12,15 +12,12 @@ from billing_agent.model import money, parse_date
 from billing_agent.rules import TOLERANCE
 from billing_agent.service import BillingService
 from billing_agent.presentation import finding_label, presentation_for, status_label
-from billing_agent.web_app import create_server, route_payload
+from billing_agent.web_app import PAGE, create_server, route_payload
 
 
 def dataset_path() -> Path | None:
-    candidates = [
-        os.environ.get("SONIA_DATASET", ""),
-        r"C:\Users\Acer\Downloads\SONIA_DESAFIO_03\SONIA_DESAFIO_03\DATASET\DATASET",
-    ]
-    return next((Path(value) for value in candidates if value and Path(value).is_dir()), None)
+    value = os.environ.get("SONIA_DATASET", "")
+    return Path(value) if value and Path(value).is_dir() else None
 
 
 DATASET = dataset_path()
@@ -61,6 +58,7 @@ class UnitTests(unittest.TestCase):
 
     def test_web_routes_and_localhost_binding(self) -> None:
         class StubService:
+            def default_as_of_date(self): return parse_date("2026-08-07")
             def billing_health_snapshot(self, as_of): return {"operation": "billing_health_snapshot", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
             def customer_billing_check(self, customer, account, as_of):
                 if customer == "UNKNOWN": raise KeyError("Cliente no encontrado")
@@ -71,7 +69,11 @@ class UnitTests(unittest.TestCase):
             def billing_cycle_gaps(self, as_of, customer, account): return {"operation": "billing_cycle_gaps", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
             def credit_note_review(self, as_of, customer, account, invoice, threshold): return {"operation": "credit_note_review", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
         service = StubService()
-        self.assertEqual(route_payload(service, "/api/status")[0], 200)
+        status, payload = route_payload(service, "/api/status")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["default_as_of_date"], "2026-08-07")
+        self.assertIn("default_as_of_date", PAGE)
+        self.assertNotIn("asOf:'2026-08-07'", PAGE)
         for path in ("/api/health", "/api/customer?customer_id=CLIENT_00001", "/api/invoice?invoice_id=S1", "/api/gaps", "/api/credit-notes"):
             status, payload = route_payload(service, path)
             self.assertEqual(status, 200, path)
@@ -95,6 +97,12 @@ class OfficialDatasetIntegrationTests(unittest.TestCase):
 
     def test_mobile_rows_are_not_deduplicated(self) -> None:
         self.assertEqual(len(self.dataset.mobile_plant), 1798)
+
+    def test_default_cutoff_uses_the_service_default(self) -> None:
+        self.assertEqual(
+            self.service.default_as_of_date().isoformat(),
+            self.service.billing_health_snapshot()["as_of_date"],
+        )
 
     def test_customer_join_uses_razon_social(self) -> None:
         result = self.service.customer_billing_check("CLIENT_00434", "993722637")

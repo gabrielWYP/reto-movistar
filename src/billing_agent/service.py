@@ -38,6 +38,10 @@ class BillingService:
         ] + [note.issued_at for note in self.model.credit_notes if note.issued_at]
         return max(dates)
 
+    def default_as_of_date(self) -> date:
+        """Expose the same default cut-off used by every tool for local clients."""
+        return self._as_of(None)
+
     def _invoices_as_of(self, as_of: date) -> list[Invoice]:
         return [item for item in self.model.invoices.values() if item.issued_at and item.issued_at <= as_of]
 
