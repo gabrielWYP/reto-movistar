@@ -318,7 +318,11 @@ class BillingService:
                 {"id": before_ref, "type": "invoice_before_gap", "value": gap["before_invoice"].evidence},
                 {"id": after_ref, "type": "invoice_after_gap", "value": gap["after_invoice"].evidence},
                 {"id": plant_ref, "type": "linked_plant", "value": self._plant_evidence(gap["plant_rows"])},
-                {"id": gap_id, "type": "cycle_gap", "value": {key: gap[key] for key in ("customer", "account", "before_period", "missing_period", "after_period")}},
+                {"id": gap_id, "type": "cycle_gap", "value": {
+                    **{key: gap[key] for key in ("customer", "account", "before_period", "missing_period", "after_period")},
+                    "before_document": gap["before_invoice"].document,
+                    "after_document": gap["after_invoice"].document,
+                }},
             ])
             findings.append(finding(
                 "BILLING_CYCLE_GAP", "MEDIUM", HEURISTIC,

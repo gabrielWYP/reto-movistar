@@ -11,6 +11,8 @@ from billing_agent.data import load_dataset
 from billing_agent.model import money, parse_date
 from billing_agent.rules import TOLERANCE
 from billing_agent.service import BillingService
+from billing_agent.presentation import finding_label, presentation_for, status_label
+from billing_agent.web_app import create_server, route_payload
 
 
 def dataset_path() -> Path | None:
@@ -44,6 +46,44 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(payload["agent"], "billing")
         self.assertEqual(payload["contract_version"], "1.0")
         self.assertEqual(json.loads(json.dumps(payload))["metrics"]["amount"], 1.2)
+
+    def test_presentation_translates_codes_without_mutating_response(self) -> None:
+        payload = AgentResponse(
+            operation="test", as_of_date=parse_date("2026-08-07"),
+            status={"billing_assurance": "REQUIERE_VALIDACION"},
+            findings=[{"type": "ARITHMETIC_MISMATCH", "severity": "MEDIUM", "message": "x"}],
+        ).to_dict()
+        view = presentation_for(payload)
+        self.assertEqual(finding_label("ARITHMETIC_MISMATCH"), "Diferencia en validación aritmética")
+        self.assertEqual(status_label("REQUIERE_VALIDACION"), "Requiere validación")
+        self.assertEqual(view["findings"][0]["business_label"], "Diferencia en validación aritmética")
+        self.assertNotIn("business_label", payload["findings"][0])
+
+    def test_web_routes_and_localhost_binding(self) -> None:
+        class StubService:
+            def billing_health_snapshot(self, as_of): return {"operation": "billing_health_snapshot", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
+            def customer_billing_check(self, customer, account, as_of):
+                if customer == "UNKNOWN": raise KeyError("Cliente no encontrado")
+                return {"operation": "customer_billing_check", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
+            def invoice_quality_check(self, invoice, as_of):
+                if invoice == "UNKNOWN": raise KeyError("Factura no encontrada")
+                return {"operation": "invoice_quality_check", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
+            def billing_cycle_gaps(self, as_of, customer, account): return {"operation": "billing_cycle_gaps", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
+            def credit_note_review(self, as_of, customer, account, invoice, threshold): return {"operation": "credit_note_review", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
+        service = StubService()
+        self.assertEqual(route_payload(service, "/api/status")[0], 200)
+        for path in ("/api/health", "/api/customer?customer_id=CLIENT_00001", "/api/invoice?invoice_id=S1", "/api/gaps", "/api/credit-notes"):
+            status, payload = route_payload(service, path)
+            self.assertEqual(status, 200, path)
+            self.assertIn("agent_response", payload)
+        self.assertEqual(route_payload(service, "/api/customer?customer_id=UNKNOWN")[0], 400)
+        self.assertEqual(route_payload(service, "/api/invoice?invoice_id=UNKNOWN")[0], 400)
+        self.assertEqual(route_payload(service, "/api/missing")[0], 404)
+        server = create_server(service, 0)
+        try:
+            self.assertEqual(server.server_address[0], "127.0.0.1")
+        finally:
+            server.server_close()
 
 
 @unittest.skipUnless(DATASET, "Set SONIA_DATASET to run integration tests against the official CSV directory.")
@@ -112,6 +152,9 @@ class OfficialDatasetIntegrationTests(unittest.TestCase):
         gap = result["findings"][0]
         self.assertEqual(gap["type"], "BILLING_CYCLE_GAP")
         self.assertEqual(gap["observed_value"]["missing_period"], "2026-06")
+        evidence = next(item for item in result["evidence"] if item["type"] == "cycle_gap")
+        self.assertEqual(evidence["value"]["before_document"], "S9AA-0081436803")
+        self.assertEqual(evidence["value"]["after_document"], "S9AA-0083154556")
 
     def test_unknown_customer_and_invoice(self) -> None:
         with self.assertRaises(KeyError):

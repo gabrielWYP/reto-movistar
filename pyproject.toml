@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 
 [project.scripts]
 sonia-billing = "billing_agent.cli:main"
+sonia-billing-web = "billing_agent.web_app:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

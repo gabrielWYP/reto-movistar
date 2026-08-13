@@ -1,8 +1,35 @@
-# SON-IA Billing Assurance Agent — Core v0.1
+# SON-IA Billing Assurance Agent — Web MVP v0.2
 
 Agente determinístico y auditable para responder: **¿la facturación disponible presenta excepciones documentales que requieren revisión?**
 
 No emite facturas, no calcula PxQ ni tarifas contractuales, no usa pagos, no calcula deuda/mora, no hace conciliación bancaria y no declara fugas o errores financieros confirmados.
+
+## Aplicación web local
+
+La experiencia principal es un **Revenue Operations Control Center — Facturación**, disponible sólo de forma local en `http://127.0.0.1:8503`.
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m billing_agent.web_app --dataset "C:\ruta\DATASET" --port 8503 --open
+```
+
+Para una persona no técnica, ejecutar [Iniciar Agente Facturacion.cmd](C:/Users/Acer/Documents/Codex/2026-08-11/ay/reto-movistar/Iniciar%20Agente%20Facturacion.cmd) o:
+
+```powershell
+.\Iniciar Agente Facturacion.ps1 -Dataset "C:\ruta\DATASET"
+```
+
+El navegador se abre automáticamente. Para cerrar la aplicación, volver a la consola y presionar `Ctrl+C`.
+
+Vistas:
+
+- **Resumen:** universo procesado, prioridades de revisión, narrativa determinística y calidad de datos.
+- **Cliente:** Billing 360 de cuentas con factura y/o planta; evidencia de documentos y alertas por cuenta.
+- **Factura:** campos del documento, control visual neto + IGV, notas de crédito y evidencia.
+- **Quiebres de ciclo:** investigación de periodos antes / sin documento / después.
+- **Notas de crédito:** ranking de ajustes post-emisión por el umbral heurístico existente.
+
+La UI consume exclusivamente las cinco tools de `BillingService`; no recalcula tolerancias, materialidad, joins ni severidades. La trazabilidad técnica completa del `AgentResponse` está disponible de manera expandible.
 
 ## Alcance y fuentes
 
@@ -66,6 +93,12 @@ Las tools son `billing_health_snapshot`, `customer_billing_check`, `invoice_qual
 
 Todas devuelven JSON con `contract_version: "1.0"`, `agent: "billing"`, fechas de corte, evidencia fuente, calidad de datos, metodología y alcance. El contrato contiene: `entity`, `status`, `metrics`, `findings`, `alerts`, `recommended_actions`, `evidence`, `data_quality`, `visualization_hints`, `analysis_scope`, `methodology` y `upstream_inputs`.
 
+Arquitectura visual:
+
+```text
+CSV oficiales → BillingService → 5 tools determinísticas → AgentResponse → presentation.py → web_app.py
+```
+
 ## Casos demo
 
 - `S300-0256413`: diferencia aritmética superior a S/ 0.01.
@@ -77,3 +110,5 @@ Todas devuelven JSON con `contract_version: "1.0"`, `agent: "billing"`, fechas d
 ## Limitaciones
 
 El extracto no contiene tarifario/PxQ contractual, motivo de NC, cobertura histórica completa, identificadores individuales de línea móvil ni una prueba del importe esperado. Por ello el agente recomienda validaciones humanas y nunca convierte una anomalía documental en pérdida o error confirmado.
+
+No hay LLM, API de OpenAI, chatbot, integración con Supervisor/BI/Cobranzas, pagos, ML ni acciones automáticas en esta versión. Esos elementos permanecen fuera del MVP web actual.
