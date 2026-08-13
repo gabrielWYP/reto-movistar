@@ -19,7 +19,20 @@ server {
         proxy_set_header X-Request-ID $request_id;
     }
 
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    location /agents/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
     location / {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
         try_files $uri $uri/ /index.html;
     }
 }
