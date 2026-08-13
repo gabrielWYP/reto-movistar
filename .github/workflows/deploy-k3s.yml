@@ -53,9 +53,21 @@ jobs:
           echo "image-tag=main-${source_sha:0:12}" >> "${GITHUB_OUTPUT}"
 
   build:
-    name: Build application image
+    name: Build ${{ matrix.component }} image
     needs: release
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: back
+            dockerfile: back/Dockerfile
+            image: ghcr.io/gabrielwyp/reto-movistar-back
+            cache-scope: reto-movistar-back
+          - component: front
+            dockerfile: front/Dockerfile
+            image: ghcr.io/gabrielwyp/reto-movistar-front
+            cache-scope: reto-movistar-front
     steps:
       - name: Checkout source commit
         uses: actions/checkout@v6
@@ -63,7 +75,7 @@ jobs:
           ref: ${{ needs.release.outputs.source-sha }}
 
       - name: Validate container contract
-        run: test -f Dockerfile
+        run: test -f "${{ matrix.dockerfile }}"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -82,12 +94,12 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/gabrielwyp/reto-movistar:${{ needs.release.outputs.image-tag }}
-          cache-from: type=gha,scope=reto-movistar
-          cache-to: type=gha,mode=max,scope=reto-movistar
+          tags: ${{ matrix.image }}:${{ needs.release.outputs.image-tag }}
+          cache-from: type=gha,scope=${{ matrix.cache-scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache-scope }}
           provenance: mode=max
           sbom: true
 
