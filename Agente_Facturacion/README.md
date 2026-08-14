@@ -1,79 +1,83 @@
-# SON-IA Billing Assurance Agent — Conversational MVP v0.3
+# SON-IA Billing Assurance Agent · v1.0
 
-Agente determinístico y auditable para responder: **¿la facturación disponible presenta excepciones documentales que requieren revisión?**
+Agente evidence-first para responder: **¿qué excepciones documentales de Facturación requieren atención, por qué y con qué evidencia?**
 
-No emite facturas, no calcula PxQ ni tarifas contractuales, no usa pagos, no calcula deuda/mora, no hace conciliación bancaria y no declara fugas o errores financieros confirmados.
+No emite facturas, no calcula tarifa contractual/PxQ, no usa la tabla 004 Pagos, no determina deuda o mora, no atribuye el motivo de una nota de crédito y no declara fugas ni errores financieros confirmados.
 
-## Aplicación web local
-
-La experiencia principal es un **Revenue Operations Control Center — Facturación**, disponible sólo de forma local en `http://127.0.0.1:8503`.
-
-```powershell
-$env:PYTHONPATH = "src"
-python -m billing_agent.web_app --dataset "C:\ruta\DATASET" --port 8503 --open
-```
-
-Para una persona no técnica, ejecutar `Iniciar Agente Facturacion.cmd` desde la raíz del repositorio, o:
-
-```powershell
-.\Iniciar Agente Facturacion.ps1 -Dataset "C:\ruta\DATASET"
-```
-
-El launcher busca primero `python` en PATH y luego el runtime local administrado por Codex. Si ninguno está disponible, instala Python 3.11+ antes de iniciar la aplicación.
-
-El navegador se abre automáticamente. Para cerrar la aplicación, volver a la consola y presionar `Ctrl+C`.
-
-Vistas:
-
-- **Resumen:** universo procesado, prioridades de revisión, narrativa determinística y calidad de datos.
-- **Cliente:** Billing 360 de cuentas con factura y/o planta; evidencia de documentos y alertas por cuenta.
-- **Factura:** campos del documento, control visual neto + IGV, notas de crédito y evidencia.
-- **Quiebres de ciclo:** investigación de periodos antes / sin documento / después.
-- **Notas de crédito:** ranking de ajustes post-emisión por el umbral heurístico existente.
-
-La UI consume exclusivamente las cinco tools de `BillingService`; no recalcula tolerancias, materialidad, joins ni severidades. La trazabilidad técnica completa del `AgentResponse` está disponible de manera expandible.
-
-## Modo conversacional
-
-La vista **Asistente SON-IA** añade una capa agéntica ligera encima del core, sin reemplazar ninguna vista ni regla existente. Funciona sin API key mediante un router local determinístico y una explicación evidence-first. Ejemplos:
-
-- `¿Qué debería revisar hoy?`
-- `Revisa la factura S300-0256413`
-- `Analiza CLIENT_00434`
-- `¿Y la cuenta 993722637?` (después de consultar el cliente)
-- `Busca quiebres de CLIENT_00434`
-- `Revisa las notas de crédito materiales`
-
-Arquitectura:
+## Arquitectura
 
 ```text
-Pregunta → BillingAgentRuntime → router/registro cerrado → BillingService
-         → AgentResponse intacto → explicación grounded → Web local o Supervisor futuro
+FRONT (proceso/pod independiente)
+  index.html + src/app.js + src/styles.css
+  Nginx / proxy relativo /api/*
+                 ↓ HTTP
+BACK (proceso/pod independiente)
+  FastAPI → BillingAgentRuntime → catálogo cerrado → BillingService
+                 ↓
+  DatasetRegistry → DatasetSource CSV/ZIP → modelo canónico
 ```
 
-El runtime sólo permite una tool principal por consulta:
+Existe una sola implementación Billing productiva: `back/src/sonia/agents/billing/`. El backend no importa HTML ni Nginx; el frontend no lee CSV, no conoce rutas internas, no contiene reglas financieras y no accede a secretos.
 
-- `billing_health_snapshot`
-- `customer_billing_check`
-- `invoice_quality_check`
-- `billing_cycle_gaps`
-- `credit_note_review`
+## Inicio local
 
-Los intents son `portfolio_health`, `customer_review`, `invoice_review`, `cycle_gap_review`, `credit_note_review`, `out_of_scope` y `clarification_required`. El contexto es sólo de sesión local y guarda identificadores/resultados recientes, nunca CSV completos.
+Desde la raíz del repositorio:
 
-Consultas de deuda, pago, mora, cobranza o recaudo devuelven `HANDOFF_RECOMMENDED` hacia `collections`; consultas de segmento, concentración, estrategia o riesgo de recupero se derivan hacia `bi`. Facturación no abre ni usa la tabla de Pagos.
+```powershell
+& ".\Iniciar Agente Facturacion.ps1" -Dataset ".\data\source\DATASET"
+```
 
-### Privacidad y LLM opcional
+También puede configurarse `SONIA_DATASET`. El launcher crea/reutiliza `.venv`, instala las dependencias declaradas si faltan, inicia BACK en `127.0.0.1:8080`, FRONT en `127.0.0.1:8503` y abre el navegador. `Ctrl+C` cierra ambos procesos.
 
-El producto base no requiere LLM ni API key: muestra **Modo local determinístico**. Si se configura `OPENAI_API_KEY`, la interfaz muestra **Modo IA: LLM + tools**. El modelo se elige con `SONIA_BILLING_MODEL` (por defecto `gpt-5`) y es opcional. El adaptador HTTP recorre explícitamente `output → message → content → output_text`; no depende de la propiedad de conveniencia del SDK.
+Inicio manual:
 
-El proveedor sólo recibe en fase 1 la pregunta y los esquemas cerrados de las cinco tools. En fase 2 recibe un resultado compacto: operación, métricas, hallazgos, acciones, IDs de evidencia y limitaciones. No se envían CSV, modelo canónico, filas fuente completas, pagos ni herramientas arbitrarias; las llamadas llevan `store: false`. Si la API falla, devuelve JSON inválido, propone una tool no autorizada o argumentos inválidos, el runtime vuelve al router y explicación determinísticos.
+```powershell
+$env:SONIA_DATASET = ".\data\source\DATASET"
+$env:PYTHONPATH = ".\back\src"
+.\.venv\Scripts\python.exe -m uvicorn sonia.app:app --host 127.0.0.1 --port 8080
+```
 
-La respuesta pública `AgentResult` contiene `agent`, `intent`, `route`, `tool`, `arguments`, `answer`, `status`, `agent_response` intacto y `trace`. El bloque **Ver razonamiento operativo** muestra intent, router, tool, argumentos, estado, referencias y duración; no expone chain-of-thought. La Web MVP conserva una única sesión conversacional local para la demo actual; el contexto se pierde al reiniciar el servidor y no constituye un sistema de sesiones multiusuario.
+En otra consola:
 
-## Alcance y fuentes
+```powershell
+.\.venv\Scripts\python.exe .\front\dev_server.py --host 127.0.0.1 --port 8503
+```
 
-Lee los cinco CSV oficiales de Facturación, como directorio o ZIP:
+## Frontend
+
+Las vistas son:
+
+- Resumen: estado general, assurance accionable y calidad/cobertura separada.
+- Billing 360: cliente, cuentas, planta, facturas, hallazgos y evidencia.
+- Factura: campos documentales, control aritmético derivado por BACK y NC vinculadas.
+- Quiebres de ciclo: evidencia antes / periodo sin documento / después.
+- Notas de crédito: ajustes post-emisión y hallazgos de materialidad.
+- Asistente SON-IA: router cerrado, contexto explícito del navegador y fallback local.
+- Fuente de datos: origen, corte, conteos por fuente, carga y eliminación temporal.
+
+Los códigos técnicos y el JSON completo permanecen disponibles en paneles de trazabilidad cerrados por defecto. La primera capa traduce categorías: validación determinística, señal heurística y calidad de datos.
+
+## API
+
+| Método | Endpoint | Responsabilidad |
+|---|---|---|
+| GET | `/health` | Probe estable de infraestructura. |
+| GET | `/api/status` | Estado del agente y dataset seleccionado. |
+| GET | `/api/health` | `billing_health_snapshot`. |
+| GET | `/api/customer` | `customer_billing_check`. |
+| GET | `/api/invoice` | `invoice_quality_check`. |
+| GET | `/api/gaps` | `billing_cycle_gaps`. |
+| GET | `/api/credit-notes` | `credit_note_review`. |
+| POST | `/api/conversation` | Router cerrado, respuesta grounded y contexto explícito. |
+| POST | `/api/datasets` | Carga multipart de cinco CSV o un ZIP. |
+| GET | `/api/datasets/{dataset_id}/status` | Conteos y corte, sin rutas internas. |
+| DELETE | `/api/datasets/{dataset_id}` | Elimina un workspace temporal cargado. |
+
+Las cinco tools conservan `AgentResponse v1.0`: `contract_version`, `agent`, `operation`, `as_of_date`, `entity`, `status`, `metrics`, `findings`, `alerts`, `recommended_actions`, `evidence`, `data_quality`, `visualization_hints`, `analysis_scope`, `methodology` y `upstream_inputs`.
+
+## Datasets dinámicos
+
+Fuentes Billing requeridas:
 
 - `001_TBL_CLIENTES_B2B.csv`
 - `002_TBL_PLANTA_FIJA_B2B.csv`
@@ -81,74 +85,74 @@ Lee los cinco CSV oficiales de Facturación, como directorio o ZIP:
 - `005_TBL_FACTURAS_B2B.csv`
 - `006_TBL_NOTAS_CREDITO_B2B.csv`
 
-`RAZON_SOCIAL` es la identidad temporal canónica. El NIF/RUC se preserva como evidencia, pero no se usa para joins porque es inconsistente entre las fuentes anonimizadas. `COD_CUENTA` se conserva como texto. Las filas de planta móvil nunca se deduplican automáticamente.
+`004_TBL_PAGOS_B2B.csv` no pertenece a este agente. Se acepta un directorio predeterminado mediante `SONIA_DATASET`, cinco archivos CSV multipart o un ZIP con esas cinco fuentes.
 
-Joins:
+Antes de construir `BillingService` se validan: cantidad, nombres reconocidos, extensión, archivo no vacío, tamaño, encoding, delimitador, headers, columnas mínimas y estructura. ZIP valida firma, límite descomprimido y rechaza rutas absolutas o `..`. CSV se trata exclusivamente como datos.
 
-```text
-Cliente → Factura: RAZON_SOCIAL
-Factura → NC: NRO_DOC_FISCAL = FACTURA_AFECTADA
-Factura → Planta: RAZON_SOCIAL + COD_CUENTA (left join)
-```
+Cada carga recibe un `dataset_id` aleatorio. Cada ID mantiene su propio `BillingService`; no existe un `CURRENT_DATASET` mutable. Los uploads viven temporalmente en `SONIA_UPLOAD_ROOT` (por defecto, `/tmp/sonia-billing` en contenedor), admiten DELETE y TTL. Se pierden al reiniciar el pod. Las respuestas públicas nunca exponen el workspace.
 
-## Reglas
+Variables de seguridad y capacidad:
+
+- `SONIA_MAX_UPLOAD_MB` (20 por defecto).
+- `SONIA_MAX_UNCOMPRESSED_MB` (48 por defecto, compatible con `/tmp` de 64 MiB de K3S).
+- `SONIA_MAX_UPLOAD_FILES` (5 por defecto).
+- `SONIA_DATASET_TTL_SECONDS` (4 horas por defecto).
+
+El boundary `DatasetSource` permite sustituir CSV/ZIP por BD, API, lake o warehouse sin modificar frontend, runtime, tools ni contrato.
+
+## Contexto y OpenAI opcional
+
+`POST /api/conversation` recibe y devuelve `context`. El navegador conserva sus identificadores; el backend no comparte un `SessionContext` global ni necesita Redis. Dos navegadores no heredan cliente, cuenta o factura entre sí.
+
+Sin `OPENAI_API_KEY`, las cinco tools, router, explicaciones, handoffs y frontend funcionan de forma determinística. Si se configura, la key solo vive en BACK y `SONIA_BILLING_MODEL` usa `gpt-5` por defecto. Se mantienen `store: false`, `compact_for_llm` y `extract_output_text`. El proveedor no recibe CSV, ZIP, rutas temporales, filas crudas ni dataset completo. Ante cualquier fallo, se usa fallback determinístico.
+
+Consultas de deuda/pago/mora/cobranza/recaudación devuelven `HANDOFF_RECOMMENDED` hacia `collections`; segmento/concentración/riesgo de recuperación hacia `bi`. No existe integración activa entre agentes en este entregable.
+
+## Reglas preservadas
 
 | Código | Categoría | Criterio |
 |---|---|---|
 | `MISSING_CURRENCY` | DETERMINISTIC | `MONEDA` vacía. |
-| `ZERO_VALUE_INVOICE` | DETERMINISTIC | Total de factura igual a cero; requiere contexto. |
+| `ZERO_VALUE_INVOICE` | DETERMINISTIC | Total igual a cero; requiere contexto. |
 | `ARITHMETIC_MISMATCH` | DETERMINISTIC | `abs(neto + IGV - total) > S/ 0.01`. |
-| `CREDIT_NOTE_PRESENT` | DETERMINISTIC | NC enlazada documentalmente. |
+| `CREDIT_NOTE_PRESENT` | DETERMINISTIC | `FACTURA_AFECTADA` enlaza una NC. |
 | `MATERIAL_CREDIT_NOTE` | HEURISTIC | NC/factura ≥25%: MEDIUM; ≥50%: HIGH. |
-| `BILLING_CYCLE_GAP` | HEURISTIC | M y M+2 cíclicos presentes, sin M+1 para cliente-cuenta. |
-| `PLANT_WITHOUT_BILLING_EVIDENCE` | HEURISTIC | Planta Active/Activo sin factura en el extracto. No prueba no-facturación. |
+| `BILLING_CYCLE_GAP` | HEURISTIC | M y M+2 cíclicos presentes, sin evidencia en M+1 para cliente-cuenta. |
+| `PLANT_WITHOUT_BILLING_EVIDENCE` | HEURISTIC | Planta activa sin factura en el extracto; señal exploratoria. |
 | `DATA_QUALITY_JOIN_GAP` | DATA_QUALITY | Cuenta facturada sin planta enlazada. |
 
-Las diferencias de hasta S/ 0.01 se consideran redondeo y no generan alerta. Una nota de crédito es un ajuste post-emisión; no prueba una factura errónea.
+Identidad temporal: `RAZON_SOCIAL`. Join factura–planta: `RAZON_SOCIAL + COD_CUENTA`. Join NC–factura: `FACTURA_AFECTADA = NRO_DOC_FISCAL`. NIF/RUC se conserva como evidencia y no se usa como llave. Planta móvil no se deduplica.
 
-## Ejecución
-
-Requiere Python 3.11+ y no tiene dependencias externas. Desde la raíz del repositorio:
+## Docker y K3S
 
 ```powershell
-$env:PYTHONPATH = "src"
-python -m billing_agent.cli --dataset "C:\ruta\DATASET" health
-python -m billing_agent.cli --dataset "C:\ruta\DATASET" customer CLIENT_00434
-python -m billing_agent.cli --dataset "C:\ruta\DATASET" invoice S300-0256413
-python -m billing_agent.cli --dataset "C:\ruta\DATASET" gaps --customer CLIENT_00434 --account 993722637
-python -m billing_agent.cli --dataset "C:\ruta\DATASET" credit-notes --invoice S1AA-0052649961
+$env:SONIA_DATASET = ".\data\source\DATASET"
+docker compose up --build
 ```
 
-Para ejecutar pruebas con los CSV oficiales:
+Compose publica solo FRONT en `127.0.0.1:8080`; Nginx resuelve BACK como `back:8080`. Ambos contenedores son no-root, independientes y de filesystem read-only con `/tmp`/caches temporales.
+
+La implementación respeta el contrato de `K3S_Infra`: BACK `0.0.0.0:8080`, probe `/health`, usuario 1001, `/tmp` escribible; FRONT puerto 8080, usuario 101 y `BACKEND_HOST=reto-movistar-back`. No se modificó ese repositorio.
+
+## Pruebas
 
 ```powershell
-$env:PYTHONPATH = "src"
-$env:SONIA_DATASET = "C:\ruta\DATASET"
-python -m unittest discover -s tests -v
+$env:SONIA_DATASET = ".\data\source\DATASET"
+$env:PYTHONPATH = ".\back\src"
+.\.venv\Scripts\python.exe -m unittest discover -s .\back\tests -v
 ```
 
-## Tools y contrato
+La suite incluye regresión del core, AC-01…AC-11, API/arquitectura, uploads válidos e inválidos, traversal ZIP, aislamiento, contexto y minimización de datos. Consulta [ACCEPTANCE_MATRIX.md](ACCEPTANCE_MATRIX.md).
+Los resultados manuales y de demo quedan registrados en [VALIDATION_REPORT.md](VALIDATION_REPORT.md).
 
-Las tools son `billing_health_snapshot`, `customer_billing_check`, `invoice_quality_check`, `billing_cycle_gaps` y `credit_note_review`.
+## Casos demo oficiales
 
-Todas devuelven JSON con `contract_version: "1.0"`, `agent: "billing"`, fechas de corte, evidencia fuente, calidad de datos, metodología y alcance. El contrato contiene: `entity`, `status`, `metrics`, `findings`, `alerts`, `recommended_actions`, `evidence`, `data_quality`, `visualization_hints`, `analysis_scope`, `methodology` y `upstream_inputs`.
-
-Arquitectura visual:
-
-```text
-CSV oficiales → BillingService → 5 tools determinísticas → AgentResponse → presentation.py → web_app.py
-```
-
-## Casos demo
-
-- `S300-0256413`: diferencia aritmética superior a S/ 0.01.
-- `FOBF-00121753`: moneda ausente.
-- `S7AA-0067926518`: total cero.
-- `S1AA-0052649961` / `SJFE-0031656645`: NC material, aproximadamente 73.8%.
-- `CLIENT_00434` / `993722637`: abril y mayo de 2026, ausencia en junio y factura en julio; candidato de quiebre documental.
+- `S300-0256413`: diferencia aproximada S/ 0.06, por encima de tolerancia; requiere validación.
+- `FOBF-00121753`: moneda no informada.
+- `S7AA-0067926518`: factura con importe cero; causa no disponible.
+- `S1AA-0052649961` / `SJFE-0031656645`: NC material aproximada 73.8%; motivo no disponible.
+- `CLIENT_00434` / `993722637`: mayo y julio con evidencia y junio sin documento cíclico; posible quiebre, no ausencia confirmada.
 
 ## Limitaciones
 
-El extracto no contiene tarifario/PxQ contractual, motivo de NC, cobertura histórica completa, identificadores individuales de línea móvil ni una prueba del importe esperado. Por ello el agente recomienda validaciones humanas y nunca convierte una anomalía documental en pérdida o error confirmado.
-
-No hay integración activa con Supervisor/BI/Cobranzas, pagos, ML ni acciones automáticas. El LLM es opcional y nunca calcula ni sustituye las reglas determinísticas. La integración multi-agente sigue fuera de este MVP.
+El extracto no contiene tarifario/PxQ contractual, motivo de NC, cobertura histórica completa, identificadores individuales de línea móvil ni importe contractual esperado. Las cargas UI son temporales y el registro vive en memoria de un único proceso BACK; para escalar a varias réplicas se necesitaría almacenamiento/registro compartido, fuera del MVP. Pagos, deuda, ML, acciones irreversibles, Supervisor y orquestación multiagente permanecen fuera de alcance.

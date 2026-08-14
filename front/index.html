@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="SON-IA Billing Assurance: gestión inteligente de excepciones de facturación.">
+  <title>SON-IA · Billing Assurance</title>
+  <link rel="stylesheet" href="/src/styles.css?v=__ASSET_VERSION__">
+  <script src="/agents/billing/config.js?v=__ASSET_VERSION__" defer></script>
+  <script src="/src/app.js?v=__ASSET_VERSION__" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="SON-IA Facturación"><span class="brand-mark">S</span><span><strong>SON-IA</strong><small>Billing Assurance</small></span></a>
+    <div class="runtime"><span class="live-dot"></span><span id="mode">Modo local determinístico</span><span class="divider"></span><span id="cutoff">Corte —</span></div>
+  </header>
+  <main class="shell">
+    <section class="hero">
+      <div><p class="eyebrow">Revenue Operations Control Center · Facturación</p><h1>Gestión inteligente de <em>excepciones.</em></h1><p>Detecta posibles quiebres antes, durante y después de la emisión con evidencia trazable.</p></div>
+      <div class="hero-note"><strong>Diseño responsable</strong><span>Los hallazgos orientan validaciones humanas; no confirman fuga ni error financiero.</span></div>
+    </section>
+
+    <section class="dataset-bar" aria-labelledby="dataset-title">
+      <div><p class="eyebrow">Fuente de datos</p><h2 id="dataset-title">Dataset activo</h2><p id="dataset-summary">Inicializando fuente…</p></div>
+      <div class="dataset-actions">
+        <button id="default-dataset" class="button secondary" type="button">Usar predeterminado</button>
+        <label class="button" for="dataset-files">Cargar nuevo dataset</label>
+        <input id="dataset-files" type="file" accept=".csv,.zip" multiple hidden>
+        <button id="delete-dataset" class="button danger hidden" type="button">Eliminar carga</button>
+      </div>
+      <div id="source-counts" class="source-counts"></div>
+      <p id="upload-help" class="micro">Carga los cinco CSV oficiales de Facturación o un ZIP. Los archivos son temporales y aislados mediante dataset_id.</p>
+    </section>
+
+    <nav class="nav" aria-label="Módulos de Facturación">
+      <button class="active" data-view="summary">Resumen</button>
+      <button data-view="customer">Billing 360</button>
+      <button data-view="invoice">Factura</button>
+      <button data-view="gaps">Quiebres de ciclo</button>
+      <button data-view="notes">Notas de crédito</button>
+      <button data-view="agent">Asistente SON-IA</button>
+    </nav>
+
+    <section class="workspace">
+      <div id="controls" class="controls"></div>
+      <div id="suggestions" class="suggestions"></div>
+      <div id="feedback" class="notice">Preparando análisis…</div>
+      <div id="content" class="content" aria-live="polite"></div>
+    </section>
+  </main>
+  <footer>SON-IA · Desafío 3 <span>Evidence-first · Human-in-the-loop · AgentResponse v1.0</span></footer>
+</body>
+</html>

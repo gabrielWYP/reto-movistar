@@ -11,12 +11,17 @@ FINDING_LABELS = {
     "CREDIT_NOTE_PRESENT": "Ajuste post-emisión registrado",
     "MATERIAL_CREDIT_NOTE": "Ajuste post-emisión material",
     "BILLING_CYCLE_GAP": "Posible quiebre de ciclo",
-    "PLANT_WITHOUT_BILLING_EVIDENCE": "Planta sin evidencia de factura en el extracto",
+    "PLANT_WITHOUT_BILLING_EVIDENCE": "Cuentas de planta sin evidencia documental de factura en el extracto",
     "DATA_QUALITY_JOIN_GAP": "Cobertura incompleta entre fuentes",
     "DATA_QUALITY_NIF_INCONSISTENT": "Identificador fiscal inconsistente entre fuentes",
 }
 
 SEVERITY_LABELS = {"HIGH": "Alta", "MEDIUM": "Media", "LOW": "Baja", "INFO": "Informativo"}
+RULE_CATEGORY_LABELS = {
+    "DETERMINISTIC": "Validación determinística",
+    "HEURISTIC": "Señal heurística",
+    "DATA_QUALITY": "Calidad de datos",
+}
 STATUS_LABELS = {
     "REQUIERE_VALIDACION": "Requiere validación",
     "SIN_EXCEPCIONES_DOCUMENTALES": "Sin excepciones documentales detectadas",
@@ -43,6 +48,7 @@ def present_finding(item: dict[str, Any]) -> dict[str, Any]:
         **item,
         "business_label": finding_label(item.get("type", "")),
         "severity_label": severity_label(item.get("severity", "INFO")),
+        "rule_category_label": RULE_CATEGORY_LABELS.get(item.get("rule_category", ""), item.get("rule_category", "")),
         "technical_code": item.get("type", ""),
     }
 
@@ -146,10 +152,28 @@ def conversational_narrative(payload: dict[str, Any]) -> str:
 def presentation_for(payload: dict[str, Any]) -> dict[str, Any]:
     """Add display-only fields without changing or replacing the public AgentResponse."""
     status = payload.get("status", {})
+    evidence = {item.get("id"): item.get("value", {}) for item in payload.get("evidence", [])}
+    adjustments = []
+    for item in payload.get("findings", []):
+        if item.get("type") != "CREDIT_NOTE_PRESENT":
+            continue
+        refs = item.get("evidence_refs", [])
+        invoice_ref = next((ref for ref in refs if str(ref).startswith("invoice:")), None)
+        credit_ref = next((ref for ref in refs if str(ref).startswith("credit_note:")), None)
+        material = next((candidate for candidate in payload.get("findings", []) if candidate.get("type") == "MATERIAL_CREDIT_NOTE" and credit_ref in candidate.get("evidence_refs", [])), None)
+        adjustments.append({
+            "invoice": evidence.get(invoice_ref, {}),
+            "credit_note": evidence.get(credit_ref, {}),
+            "ratio": (material or item).get("observed_value", {}).get("ratio"),
+            "severity": (material or item).get("severity", "INFO"),
+            "severity_label": severity_label((material or item).get("severity", "INFO")),
+            "material": material is not None,
+        })
     return {
         "narrative": deterministic_narrative(payload),
         "status_labels": {key: status_label(value) for key, value in status.items()},
         "findings": [present_finding(item) for item in payload.get("findings", [])],
         "alerts": [present_finding(item) for item in payload.get("alerts", [])],
+        "adjustments": adjustments,
         "data_quality_message": "El agente distingue entre evidencia disponible e información que requiere validación externa.",
     }

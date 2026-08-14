@@ -86,9 +86,9 @@ class BillingService:
             "source_counts": self.model.dataset.source_counts(),
             "canonical_customer_key": "RAZON_SOCIAL",
             "join_rules": {
-                "customer": "RAZON_SOCIAL (NIF is evidence only)",
+                "customer": "RAZON_SOCIAL (NIF solo como evidencia)",
                 "invoice_to_credit_note": "NRO_DOC_FISCAL -> FACTURA_AFECTADA",
-                "invoice_to_plant": "RAZON_SOCIAL + COD_CUENTA, left join",
+                "invoice_to_plant": "RAZON_SOCIAL + COD_CUENTA, unión izquierda",
             },
             "join_coverage": {
                 "invoiced_customer_accounts": len(invoice_accounts),
@@ -102,11 +102,11 @@ class BillingService:
                 "mobile_exact_duplicate_extra_rows_preserved": duplicate_extra_rows,
             },
             "known_limitations": [
-                "NIF/RUC is inconsistent across source tables and is not used as an inter-table key.",
-                "Plant-to-invoice coverage is partial; an unmatched account is not proof of non-billing.",
-                "Exact-looking mobile rows are retained because anonymization may hide individual line identifiers.",
-                "The supplied extracts may represent partial time windows rather than complete contractual history.",
-                "No contractual PxQ, tariff catalogue, credit-note reason, or evidence of the expected billed amount is available.",
+                "El NIF/RUC es inconsistente entre fuentes y no se usa como llave entre tablas.",
+                "La cobertura planta a factura es parcial; una cuenta sin enlace no prueba ausencia de facturación.",
+                "Las filas móviles aparentemente idénticas se preservan porque la anonimización puede ocultar identificadores de línea.",
+                "Los extractos suministrados pueden representar ventanas parciales y no toda la historia contractual.",
+                "No se dispone de PxQ contractual, tarifario, motivo de nota de crédito ni evidencia del importe esperado.",
             ],
         }
 
@@ -205,7 +205,7 @@ class BillingService:
                 {"action": "validate_data_coverage", "reason": "Confirmar cobertura de planta, sistemas y ventana temporal."},
             ], evidence=evidence, data_quality=quality,
             visualization_hints=[{"type": "kpi_cards", "fields": ["invoice_documents", "material_credit_note_count", "cycle_gap_candidates"]}],
-            analysis_scope={"as_of_date_applied": True, "payments_excluded": True, "currency_scope": "source values; no cross-currency conversion"},
+            analysis_scope={"as_of_date_applied": True, "payments_excluded": True, "currency_scope": "valores de origen; sin conversión entre monedas"},
             methodology={"deterministic": True, "arithmetic_tolerance": TOLERANCE, "materiality": "25% MEDIUM, 50% HIGH", "cycle_gap": "M and M+2 present, M+1 absent"},
             upstream_inputs=[{"type": "csv_adapter", "tables": list(self.model.dataset.source_counts()), "status": "active"}],
         ).to_dict()
@@ -299,7 +299,7 @@ class BillingService:
         return AgentResponse(
             operation="invoice_quality_check", as_of_date=as_of, entity={"type": "invoice", "id": document},
             status={"billing_assurance": "REQUIERE_VALIDACION" if findings else "SIN_EXCEPCIONES_DOCUMENTALES"},
-            metrics={"net": invoice.net, "tax": invoice.tax, "reported_total": invoice.total, "derived_total": invoice.net + invoice.tax, "difference": invoice.net + invoice.tax - invoice.total, "credit_note_count": len(notes)},
+            metrics={"net": invoice.net, "tax": invoice.tax, "reported_total": invoice.total, "derived_total": invoice.net + invoice.tax, "difference": invoice.net + invoice.tax - invoice.total, "absolute_difference": abs(invoice.net + invoice.tax - invoice.total), "credit_note_count": len(notes)},
             findings=findings,
             recommended_actions=[{"action": "validate_source_document", "reason": "Contrastar los campos mostrados con el sistema de origen antes de concluir una incidencia."}],
             evidence=evidence, data_quality=self._quality(as_of),

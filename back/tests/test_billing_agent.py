@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import tempfile
 import unittest
 from decimal import Decimal
 from io import BytesIO
@@ -11,16 +12,19 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from billing_agent.contracts import AgentResponse
-from billing_agent.data import load_dataset
-from billing_agent.agent import validate_arguments
-from billing_agent.model import money, parse_date
-from billing_agent.rules import TOLERANCE
-from billing_agent.service import BillingService
-from billing_agent.presentation import finding_label, presentation_for, status_label
-from billing_agent.web_app import PAGE, create_server, route_payload
-from billing_agent.runtime import AgentResult, BillingAgentRuntime, SessionContext, compact_for_llm, deterministic_route
-from billing_agent.openai_runtime import API_URL, DEFAULT_MODEL, OpenAIRuntime, extract_output_text
+from fastapi.testclient import TestClient
+
+from sonia.agents.billing.contracts import AgentResponse
+from sonia.agents.billing.data import load_dataset
+from sonia.agents.billing.agent import validate_arguments
+from sonia.agents.billing.model import money, parse_date
+from sonia.agents.billing.rules import TOLERANCE
+from sonia.agents.billing.service import BillingService
+from sonia.agents.billing.presentation import finding_label, presentation_for, status_label
+from sonia.agents.billing.runtime import AgentResult, BillingAgentRuntime, SessionContext, compact_for_llm, deterministic_route
+from sonia.agents.billing.openai_runtime import API_URL, DEFAULT_MODEL, OpenAIRuntime, extract_output_text
+from sonia.app import create_app
+from sonia.config import Settings
 
 
 def dataset_path() -> Path | None:
@@ -64,47 +68,27 @@ class UnitTests(unittest.TestCase):
         self.assertEqual(view["findings"][0]["business_label"], "Diferencia en validación aritmética")
         self.assertNotIn("business_label", payload["findings"][0])
 
-    def test_web_routes_and_localhost_binding(self) -> None:
-        class StubService:
-            def default_as_of_date(self): return parse_date("2026-08-07")
-            def billing_health_snapshot(self, as_of): return {"operation": "billing_health_snapshot", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
-            def customer_billing_check(self, customer, account, as_of):
-                if customer == "UNKNOWN": raise KeyError("Cliente no encontrado")
-                return {"operation": "customer_billing_check", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
-            def invoice_quality_check(self, invoice, as_of):
-                if invoice == "UNKNOWN": raise KeyError("Factura no encontrada")
-                return {"operation": "invoice_quality_check", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
-            def billing_cycle_gaps(self, as_of, customer, account): return {"operation": "billing_cycle_gaps", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
-            def credit_note_review(self, as_of, customer, account, invoice, threshold): return {"operation": "credit_note_review", "as_of_date": "2026-08-07", "status": {}, "metrics": {}, "findings": []}
-        service = StubService()
-        status, payload = route_payload(service, "/api/status")
-        self.assertEqual(status, 200)
-        self.assertEqual(payload["default_as_of_date"], "2026-08-07")
-        self.assertIn("default_as_of_date", PAGE)
-        self.assertNotIn("asOf:'2026-08-07'", PAGE)
-        for path in ("/api/health", "/api/customer?customer_id=CLIENT_00001", "/api/invoice?invoice_id=S1", "/api/gaps", "/api/credit-notes"):
-            status, payload = route_payload(service, path)
-            self.assertEqual(status, 200, path)
-            self.assertIn("agent_response", payload)
-        self.assertEqual(route_payload(service, "/api/customer?customer_id=UNKNOWN")[0], 400)
-        self.assertEqual(route_payload(service, "/api/invoice?invoice_id=UNKNOWN")[0], 400)
-        self.assertEqual(route_payload(service, "/api/missing")[0], 404)
-        server = create_server(service, 0)
-        try:
-            self.assertEqual(server.server_address[0], "127.0.0.1")
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            request = Request(
-                f"http://127.0.0.1:{server.server_address[1]}/api/conversation",
-                data=b'{"question":"Que deberia revisar hoy?"}',
-                headers={"Content-Type": "application/json"}, method="POST",
+    def test_fastapi_routes_and_dynamic_cutoff(self) -> None:
+        if not DATASET:
+            self.skipTest("SONIA_DATASET no configurado")
+        with tempfile.TemporaryDirectory() as temp:
+            client = TestClient(create_app(Settings(dataset_path=DATASET, upload_root=Path(temp))))
+            self.assertEqual(client.get("/health").status_code, 200)
+            status = client.get("/api/status").json()
+            self.assertEqual(status["max_as_of_date"], "2026-08-07")
+            paths = (
+                "/api/health", "/api/customer?customer_id=CLIENT_00434",
+                "/api/invoice?invoice_id=S300-0256413", "/api/gaps",
+                "/api/credit-notes",
             )
-            with urlopen(request, timeout=5) as response:
-                conversation = json.loads(response.read().decode("utf-8"))
+            for path in paths:
+                response = client.get(path)
+                self.assertEqual(response.status_code, 200, path)
+                self.assertIn("agent_response", response.json())
+            self.assertEqual(client.get("/api/customer?customer_id=UNKNOWN").status_code, 404)
+            self.assertEqual(client.get("/api/invoice?invoice_id=UNKNOWN").status_code, 404)
+            conversation = client.post("/api/conversation", json={"question": "Que deberia revisar hoy?", "context": {}}).json()
             self.assertEqual((conversation["intent"], conversation["tool"]), ("portfolio_health", "billing_health_snapshot"))
-        finally:
-            server.shutdown()
-            server.server_close()
 
     def test_deterministic_router_and_required_clarifications(self) -> None:
         self.assertEqual(deterministic_route("¿Qué debería revisar hoy?").tool, "billing_health_snapshot")
@@ -173,7 +157,7 @@ class UnitTests(unittest.TestCase):
         self.assertNotIn("__source_table", json.dumps(calls[1]))
         self.assertNotIn("raw-csv", json.dumps(calls[1]))
         error = HTTPError(API_URL, 404, "Not Found", {}, BytesIO(b"{}"))
-        with patch("billing_agent.openai_runtime.urlopen", side_effect=error):
+        with patch("sonia.agents.billing.openai_runtime.urlopen", side_effect=error):
             with self.assertRaises(RuntimeError):
                 OpenAIRuntime._http_post({}, "test-key")
         with patch.dict(os.environ, {}, clear=True):
