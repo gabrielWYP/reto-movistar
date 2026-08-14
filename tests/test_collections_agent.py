@@ -1,8 +1,11 @@
 from pathlib import Path
+import os
 import unittest
+from unittest.mock import patch
 
 from collections_agent.service import CollectionsService
-from collections_agent.openai_runtime import _schemas
+from collections_agent.openai_runtime import _schemas, ask
+from collections_agent.uploads import load_uploaded_csvs
 from collections_agent.web_app import PAGE, route_payload
 
 
@@ -56,3 +59,35 @@ class CollectionsAgentTests(unittest.TestCase):
         self.assertIn("Antigüedad de la deuda", PAGE)
         self.assertIn("Detalle técnico e integración (JSON)", PAGE)
         self.assertIn("Índice de prioridad", PAGE)
+        self.assertIn("Consulta con IA", PAGE)
+        self.assertIn("Validar y usar archivos", PAGE)
+
+    def test_validated_csv_package_replaces_data_without_mixing(self):
+        invoices = (
+            "RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|NRO_DOC_FISCAL|FECHA_EMISION|FECHA_VTO|CHARGE_TOTAL_AMOUNT\n"
+            "CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.50\n"
+        ).encode()
+        payments = (
+            "RAZON_SOCIAL|COD_CUENTA|FACTURA_AFECTADA|FECHA_PAGO|MONTO_PAGADO\n"
+            "CLIENT_TEST|ACC-1|FAC-001|2026-07-15|40.50\n"
+        ).encode()
+        dataset, report = load_uploaded_csvs(
+            [("facturas.csv", invoices), ("pagos.csv", payments)], max_files=6, max_bytes=1_000_000
+        )
+        self.assertTrue(report.ready_for_analysis)
+        self.assertIsNotNone(dataset)
+        result = CollectionsService.from_dataset(dataset).invoice_trace("FAC-001", "2026-08-07")
+        self.assertEqual(result["metrics"]["outstanding_balance"], 60.0)
+
+    def test_incompatible_csv_is_rejected_without_dataset(self):
+        dataset, report = load_uploaded_csvs(
+            [("desconocido.csv", b"NOMBRE|MONTO\nEjemplo|10\n")], max_files=6, max_bytes=1_000_000
+        )
+        self.assertIsNone(dataset)
+        self.assertFalse(report.ready_for_analysis)
+        self.assertTrue(report.errors)
+
+    def test_openai_mode_requires_a_runtime_secret(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
+            with self.assertRaisesRegex(RuntimeError, "OPENAI_API_KEY"):
+                ask(self.service(), "Resume la cartera")

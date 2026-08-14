@@ -8,13 +8,20 @@ from decimal import Decimal
 from pathlib import Path
 
 from .contracts import AgentResponse
-from .data import load_dataset
+from .data import SoniaDataset, load_dataset
 from .ledger import Ledger, InvoiceLedger, TOLERANCE, aging_bucket, build_ledger, by_customer
+from .rules import PRIORITY_WEIGHTS, priority_level
 
 
 class CollectionsService:
-    def __init__(self, dataset_path: Path):
-        self.ledger: Ledger = build_ledger(load_dataset(dataset_path))
+    def __init__(self, dataset_path: Path | SoniaDataset):
+        dataset = dataset_path if isinstance(dataset_path, SoniaDataset) else load_dataset(dataset_path)
+        self.ledger: Ledger = build_ledger(dataset)
+
+    @classmethod
+    def from_dataset(cls, dataset: SoniaDataset) -> "CollectionsService":
+        """Create an isolated service from already-validated, in-memory data."""
+        return cls(dataset)
 
     def _as_of(self, value: str | None) -> date:
         return date.fromisoformat(value) if value else self.ledger.latest_event_date
@@ -191,15 +198,15 @@ class CollectionsService:
         max_overdue = max((row["overdue_balance"] for row in rows), default=Decimal(1))
         max_outstanding = max((row["outstanding_balance"] for row in rows), default=Decimal(1))
         for row in rows:
-            # Transparent score: 45 amount, 30 age, 15 overdue concentration, 10 total concentration.
+            # Transparent score; weights are centralized in rules.py.
             row["score_components"] = {
-                "overdue_amount": min(Decimal(45), Decimal(45) * row["overdue_balance"] / max_overdue),
-                "days_past_due": min(Decimal(30), Decimal(30) * Decimal(row["max_days_past_due"]) / Decimal(90)),
-                "overdue_share": Decimal(15) * row["overdue_share"],
-                "portfolio_concentration": Decimal(10) * row["outstanding_balance"] / max_outstanding,
+                "overdue_amount": min(PRIORITY_WEIGHTS["overdue_amount"], PRIORITY_WEIGHTS["overdue_amount"] * row["overdue_balance"] / max_overdue),
+                "days_past_due": min(PRIORITY_WEIGHTS["days_past_due"], PRIORITY_WEIGHTS["days_past_due"] * Decimal(row["max_days_past_due"]) / Decimal(90)),
+                "overdue_share": PRIORITY_WEIGHTS["overdue_share"] * row["overdue_share"],
+                "portfolio_concentration": PRIORITY_WEIGHTS["portfolio_concentration"] * row["outstanding_balance"] / max_outstanding,
             }
             row["priority_score"] = sum(row["score_components"].values(), Decimal()).quantize(Decimal("0.1"))
-            row["priority"] = "HIGH" if row["priority_score"] >= Decimal(60) else "MEDIUM" if row["priority_score"] >= Decimal(30) else "LOW"
+            row["priority"] = priority_level(row["priority_score"])
         return sorted(rows, key=lambda row: row["priority_score"], reverse=True)
 
     def collection_priorities(self, limit: int = 20, as_of_date: str | None = None) -> dict:
@@ -240,4 +247,3 @@ class CollectionsService:
             visualization_hints=[{"type": "exception_table", "source": "evidence"}],
         )
         return response.to_dict()
-

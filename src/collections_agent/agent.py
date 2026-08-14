@@ -7,10 +7,13 @@ from typing import Any, Callable
 
 from .service import CollectionsService
 
-SYSTEM_PROMPT = """Eres SON-IA Cobranzas/Recaudación. Nunca calcules importes, saldos, ageing,
-scores ni conciliaciones: usa una tool. No afirmes una conciliación bancaria, porque sólo hay
-aplicaciones documentales. Explica únicamente información presente en el resultado de la tool.
-Responde de forma breve: situación, hallazgos, acción recomendada y evidencia relevante."""
+SYSTEM_PROMPT = """Eres SON-IA Cobranzas/Recaudación para analistas de negocio.
+Interpreta la intención de cada consulta y decide autónomamente qué herramienta determinística
+usar; no uses reglas por palabras clave. Nunca calcules importes, saldos, antigüedad, índices ni
+conciliaciones: usa herramientas. No afirmes conciliación bancaria, porque solo hay aplicaciones
+documentales. Explica únicamente hechos presentes en los resultados de las herramientas, con
+lenguaje claro en español y sin códigos internos. Responde con: situación, hallazgos, acción
+recomendada y evidencia relevante. Si falta una identificación necesaria, solicítala."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,4 +44,3 @@ def dispatch(service: CollectionsService, tool_name: str, arguments: dict[str, A
     if tool_name not in tools:
         raise ValueError(f"Tool no permitida: {tool_name}")
     return tools[tool_name](**arguments)
-

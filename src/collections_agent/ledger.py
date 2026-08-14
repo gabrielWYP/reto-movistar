@@ -9,9 +9,9 @@ from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
 from .data import SoniaDataset
+from .rules import TOLERANCE, aging_bucket
 
 ZERO = Decimal("0")
-TOLERANCE = Decimal("0.01")
 
 
 def money(value: str | Decimal | None) -> Decimal:
@@ -190,23 +190,8 @@ def build_ledger(dataset: SoniaDataset) -> Ledger:
     )
 
 
-def aging_bucket(days: int | None) -> str:
-    if days is None:
-        return "SIN_FECHA_VENCIMIENTO"
-    if days == 0:
-        return "NO_VENCIDA"
-    if days <= 30:
-        return "1_30"
-    if days <= 60:
-        return "31_60"
-    if days <= 90:
-        return "61_90"
-    return "90_PLUS"
-
-
 def by_customer(invoices: Iterable[InvoiceLedger]) -> dict[str, list[InvoiceLedger]]:
     result: dict[str, list[InvoiceLedger]] = defaultdict(list)
     for invoice in invoices:
         result[invoice.customer].append(invoice)
     return result
-
