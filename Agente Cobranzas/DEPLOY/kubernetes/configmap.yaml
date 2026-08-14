@@ -1,0 +1,1 @@
+apiVersion: v1 kind: ConfigMap metadata:   name: collections-agent-config data:   SONIA_HOST: "0.0.0.0"   SONIA_PORT: "8080"   SONIA_MODEL: "gpt-5.6-terra"   SONIA_REASONING_EFFORT: "low"   SONIA_DATASET_PATH: "/data/source/SONIA_DESAFIO_03.zip"

@@ -1,6 +1,1 @@
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
-.env
-data/source/*.zip
+__pycache__/ *.py[cod] .pytest_cache/ .venv/ *.egg-info/ .env Agente Cobranzas/data/source/*.zip

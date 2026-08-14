@@ -1,0 +1,1 @@
+# Frontend - Agente de Cobranzas  Interfaz estática para usuarios de negocio. Nginx publica la página y redirige exclusivamente `/api/*` y `/health` al backend interno. Por tanto, el navegador no recibe ninguna clave de OpenAI ni conoce la dirección privada del pod backend.
