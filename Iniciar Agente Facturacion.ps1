@@ -5,6 +5,18 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $Dataset) {
+    $Dataset = $env:SONIA_DATASET
+}
+if (-not $Dataset) {
+    $Dataset = [Environment]::GetEnvironmentVariable("SONIA_DATASET", "User")
+}
+if (-not $Dataset) {
+    $DownloadsDataset = Join-Path $env:USERPROFILE "Downloads\SONIA_DESAFIO_03\SONIA_DESAFIO_03\DATASET\DATASET"
+    if (Test-Path -LiteralPath $DownloadsDataset) {
+        $Dataset = $DownloadsDataset
+    }
+}
+if (-not $Dataset) {
     $Dataset = Join-Path $Root "data\source\DATASET"
 }
 if (-not (Test-Path -LiteralPath $Dataset)) {
@@ -13,8 +25,11 @@ if (-not (Test-Path -LiteralPath $Dataset)) {
     exit 1
 }
 
+$VenvPython = Join-Path $Root ".venv\Scripts\python.exe"
 $PythonCommand = Get-Command python -ErrorAction SilentlyContinue
-if ($PythonCommand) {
+if (Test-Path -LiteralPath $VenvPython) {
+    $Python = $VenvPython
+} elseif ($PythonCommand) {
     $Python = $PythonCommand.Source
 } else {
     # Codex desktop can provide a managed Python runtime even when Python is not
