@@ -18,7 +18,7 @@ class Settings:
     dataset_path: Path | None
 
     @classmethod
-    def from_environment(cls) -> "Settings":
+    def from_environment(cls) -> Settings:
         port = int(os.getenv("SONIA_PORT", "8080"))
         if not 1 <= port <= 65535:
             raise ValueError("SONIA_PORT debe estar entre 1 y 65535.")

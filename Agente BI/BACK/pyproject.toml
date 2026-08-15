@@ -42,18 +42,21 @@ testpaths = ["tests"]
 markers = ["official_dataset: regression against the six official hackathon CSV files"]
 
 [tool.ruff]
-extend-exclude = ["src/bi_agent", "tests/test_bi_agent.py"]
 line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ANN"]
+# E501 is delegated to Ruff's formatter; long contractual strings cannot be split safely.
+# ANN401 is intentionally allowed at heterogeneous JSON boundaries; Mypy remains strict.
+ignore = ["E501", "ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test functions use pytest/unittest discovery signatures; return annotations add no value.
+"tests/*.py" = ["ANN"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
+mypy_path = ["src"]
 packages = ["bi_agent"]
-
-[[tool.mypy.overrides]]
-module = ["bi_agent.*"]
-ignore_errors = true

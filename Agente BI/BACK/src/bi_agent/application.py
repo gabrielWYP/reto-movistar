@@ -32,9 +32,7 @@ class BIBackend:
     @property
     def configured(self) -> bool:
         """Report availability without loading the potentially large dataset."""
-        return self._service is not None or bool(
-            self._dataset_path and self._dataset_path.exists()
-        )
+        return self._service is not None or bool(self._dataset_path and self._dataset_path.exists())
 
     @property
     def llm_available(self) -> bool:

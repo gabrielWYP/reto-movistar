@@ -45,11 +45,15 @@ def _decode_csv(content: bytes) -> list[dict[str, str]]:
 
 def _read_zip(path: Path) -> dict[str, list[dict[str, str]]]:
     with zipfile.ZipFile(path) as outer:
-        nested_name = next((name for name in outer.namelist() if name.lower().endswith(".zip")), None)
+        nested_name = next(
+            (name for name in outer.namelist() if name.lower().endswith(".zip")), None
+        )
         nested = zipfile.ZipFile(io.BytesIO(outer.read(nested_name))) if nested_name else outer
         try:
             return {
-                logical: _decode_csv(nested.read(next(name for name in nested.namelist() if name.endswith(filename))))
+                logical: _decode_csv(
+                    nested.read(next(name for name in nested.namelist() if name.endswith(filename)))
+                )
                 for logical, filename in TABLE_FILES.items()
             }
         finally:
@@ -60,7 +64,10 @@ def _read_zip(path: Path) -> dict[str, list[dict[str, str]]]:
 def load_dataset(path: Path) -> SoniaDataset:
     """Load an official CSV directory, DATASET.zip, or outer SONIA ZIP container."""
     if path.is_dir():
-        contents = {logical: _decode_csv((path / filename).read_bytes()) for logical, filename in TABLE_FILES.items()}
+        contents = {
+            logical: _decode_csv((path / filename).read_bytes())
+            for logical, filename in TABLE_FILES.items()
+        }
     elif path.suffix.lower() == ".zip":
         contents = _read_zip(path)
     else:

@@ -11,9 +11,7 @@ BI_FRONTEND = AGENT_ROOT / "FRONT"
 
 def test_bi_has_no_parallel_http_server_or_embedded_frontend() -> None:
     assert not (BI_BACKEND / "web_app.py").exists()
-    backend_source = "\n".join(
-        path.read_text(encoding="utf-8") for path in BI_BACKEND.glob("*.py")
-    )
+    backend_source = "\n".join(path.read_text(encoding="utf-8") for path in BI_BACKEND.glob("*.py"))
     assert "http.server" not in backend_source
     assert "ThreadingHTTPServer" not in backend_source
     assert "<!doctype html>" not in backend_source.lower()
@@ -28,9 +26,7 @@ def test_supervisor_boundary_does_not_depend_on_fastapi() -> None:
 
 def test_bi_frontend_is_a_pure_http_client() -> None:
     frontend_source = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in BI_FRONTEND.rglob("*")
-        if path.is_file()
+        path.read_text(encoding="utf-8") for path in BI_FRONTEND.rglob("*") if path.is_file()
     )
     assert 'fetch("/api/bi/query"' in frontend_source
     assert 'fetch("/api/bi/status"' in frontend_source

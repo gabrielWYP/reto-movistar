@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import csv
 import copy
+import csv
 import json
 import tempfile
 import unittest
@@ -21,41 +21,227 @@ from bi_agent.prompting import SYSTEM_PROMPT, load_system_prompt
 from bi_agent.service import BIService
 from bi_agent.visuals import ALLOWED_COMPONENTS, dashboard_spec
 
-
 HEADERS = {
-    "001_TBL_CLIENTES_B2B.csv": ["SEGMENTO_PAIS", "TIPO_DOCUMENTO", "NUMERO_IDENTIFICACION_FISCAL", "RAZON_SOCIAL", "SUNAT_ESTADO_RUC", "SUNAT_ESTADO_CONTRIBUYENTE", "SUNAT_DEPARTAMENTO", "SUNAT_PROVINCIA", "SUNAT_DISTRITO"],
-    "002_TBL_PLANTA_FIJA_B2B.csv": ["SEGMENTO_PAIS", "NUMERO_IDENTIFICACION_FISCAL", "RAZON_SOCIAL", "COD_CLIENTE", "COD_CUENTA", "SUB_MAIN_OFFER_DESC"],
-    "003_TBL_PLANTA_MOVIL_B2B.csv": ["SEGMENTO_PAIS", "NUMERO_IDENTIFICACION_FISCAL", "RAZON_SOCIAL", "COD_CLIENTE", "COD_CUENTA", "PRODUCT_DESC"],
-    "004_TBL_PAGOS_B2B.csv": ["TIPO_DOCUMENTO", "NRO_IDENTIFICACION_FISCAL", "RAZON_SOCIAL", "COD_CLIENTE", "COD_CUENTA", "SISTEMA", "FACTURA_AFECTADA", "FECHA_PAGO", "MONEDA_FACTURA", "SUBTOTAL", "IGV", "MONTO_PAGADO"],
-    "005_TBL_FACTURAS_B2B.csv": ["NUMERO_IDENTIFICACION_FISCAL", "RAZON_SOCIAL", "COD_CLIENTE", "COD_CUENTA", "NRO_DOC_FISCAL", "FUENTE", "SISTEMA", "FECHA_EMISION", "FECHA_VTO", "MONEDA", "CHARGE_NET_AMOUNT", "CHARGE_IGV_INVOICE", "CHARGE_TOTAL_AMOUNT"],
-    "006_TBL_NOTAS_CREDITO_B2B.csv": ["NUMERO_IDENTIFICACION_FISCAL", "RAZON_SOCIAL", "COD_CLIENTE", "COD_CUENTA", "NRO_DOC_FISCAL", "FUENTE", "SISTEMA", "FACTURA_AFECTADA", "FECHAEMISION", "MONEDA", "MONTO_SIN_IGV", "SUBTOTAL", "MONTO"],
+    "001_TBL_CLIENTES_B2B.csv": [
+        "SEGMENTO_PAIS",
+        "TIPO_DOCUMENTO",
+        "NUMERO_IDENTIFICACION_FISCAL",
+        "RAZON_SOCIAL",
+        "SUNAT_ESTADO_RUC",
+        "SUNAT_ESTADO_CONTRIBUYENTE",
+        "SUNAT_DEPARTAMENTO",
+        "SUNAT_PROVINCIA",
+        "SUNAT_DISTRITO",
+    ],
+    "002_TBL_PLANTA_FIJA_B2B.csv": [
+        "SEGMENTO_PAIS",
+        "NUMERO_IDENTIFICACION_FISCAL",
+        "RAZON_SOCIAL",
+        "COD_CLIENTE",
+        "COD_CUENTA",
+        "SUB_MAIN_OFFER_DESC",
+    ],
+    "003_TBL_PLANTA_MOVIL_B2B.csv": [
+        "SEGMENTO_PAIS",
+        "NUMERO_IDENTIFICACION_FISCAL",
+        "RAZON_SOCIAL",
+        "COD_CLIENTE",
+        "COD_CUENTA",
+        "PRODUCT_DESC",
+    ],
+    "004_TBL_PAGOS_B2B.csv": [
+        "TIPO_DOCUMENTO",
+        "NRO_IDENTIFICACION_FISCAL",
+        "RAZON_SOCIAL",
+        "COD_CLIENTE",
+        "COD_CUENTA",
+        "SISTEMA",
+        "FACTURA_AFECTADA",
+        "FECHA_PAGO",
+        "MONEDA_FACTURA",
+        "SUBTOTAL",
+        "IGV",
+        "MONTO_PAGADO",
+    ],
+    "005_TBL_FACTURAS_B2B.csv": [
+        "NUMERO_IDENTIFICACION_FISCAL",
+        "RAZON_SOCIAL",
+        "COD_CLIENTE",
+        "COD_CUENTA",
+        "NRO_DOC_FISCAL",
+        "FUENTE",
+        "SISTEMA",
+        "FECHA_EMISION",
+        "FECHA_VTO",
+        "MONEDA",
+        "CHARGE_NET_AMOUNT",
+        "CHARGE_IGV_INVOICE",
+        "CHARGE_TOTAL_AMOUNT",
+    ],
+    "006_TBL_NOTAS_CREDITO_B2B.csv": [
+        "NUMERO_IDENTIFICACION_FISCAL",
+        "RAZON_SOCIAL",
+        "COD_CLIENTE",
+        "COD_CUENTA",
+        "NRO_DOC_FISCAL",
+        "FUENTE",
+        "SISTEMA",
+        "FACTURA_AFECTADA",
+        "FECHAEMISION",
+        "MONEDA",
+        "MONTO_SIN_IGV",
+        "SUBTOTAL",
+        "MONTO",
+    ],
 }
 
 
 def write_dataset(folder: Path) -> None:
     rows = {
         "001_TBL_CLIENTES_B2B.csv": [
-            {"SEGMENTO_PAIS": "SEG_A", "TIPO_DOCUMENTO": "RUC", "NUMERO_IDENTIFICACION_FISCAL": "RUC_1", "RAZON_SOCIAL": "CLIENT_A", "SUNAT_ESTADO_RUC": "HABIDO", "SUNAT_ESTADO_CONTRIBUYENTE": "ACTIVO", "SUNAT_DEPARTAMENTO": "LIMA", "SUNAT_PROVINCIA": "LIMA", "SUNAT_DISTRITO": "MIRAFLORES"},
-            {"SEGMENTO_PAIS": "SEG_B", "TIPO_DOCUMENTO": "RUC", "NUMERO_IDENTIFICACION_FISCAL": "RUC_2", "RAZON_SOCIAL": "CLIENT_B", "SUNAT_ESTADO_RUC": "HABIDO", "SUNAT_ESTADO_CONTRIBUYENTE": "ACTIVO", "SUNAT_DEPARTAMENTO": "CUSCO", "SUNAT_PROVINCIA": "CUSCO", "SUNAT_DISTRITO": "CUSCO"},
+            {
+                "SEGMENTO_PAIS": "SEG_A",
+                "TIPO_DOCUMENTO": "RUC",
+                "NUMERO_IDENTIFICACION_FISCAL": "RUC_1",
+                "RAZON_SOCIAL": "CLIENT_A",
+                "SUNAT_ESTADO_RUC": "HABIDO",
+                "SUNAT_ESTADO_CONTRIBUYENTE": "ACTIVO",
+                "SUNAT_DEPARTAMENTO": "LIMA",
+                "SUNAT_PROVINCIA": "LIMA",
+                "SUNAT_DISTRITO": "MIRAFLORES",
+            },
+            {
+                "SEGMENTO_PAIS": "SEG_B",
+                "TIPO_DOCUMENTO": "RUC",
+                "NUMERO_IDENTIFICACION_FISCAL": "RUC_2",
+                "RAZON_SOCIAL": "CLIENT_B",
+                "SUNAT_ESTADO_RUC": "HABIDO",
+                "SUNAT_ESTADO_CONTRIBUYENTE": "ACTIVO",
+                "SUNAT_DEPARTAMENTO": "CUSCO",
+                "SUNAT_PROVINCIA": "CUSCO",
+                "SUNAT_DISTRITO": "CUSCO",
+            },
         ],
         "002_TBL_PLANTA_FIJA_B2B.csv": [
-            {"SEGMENTO_PAIS": "SEG_A", "NUMERO_IDENTIFICACION_FISCAL": "RUC_1", "RAZON_SOCIAL": "CLIENT_A", "COD_CLIENTE": "C1", "COD_CUENTA": "001", "SUB_MAIN_OFFER_DESC": "FIXED_A"},
-            {"SEGMENTO_PAIS": "SEG_A", "NUMERO_IDENTIFICACION_FISCAL": "RUC_1", "RAZON_SOCIAL": "CLIENT_A", "COD_CLIENTE": "C1", "COD_CUENTA": "001", "SUB_MAIN_OFFER_DESC": "FIXED_B"},
+            {
+                "SEGMENTO_PAIS": "SEG_A",
+                "NUMERO_IDENTIFICACION_FISCAL": "RUC_1",
+                "RAZON_SOCIAL": "CLIENT_A",
+                "COD_CLIENTE": "C1",
+                "COD_CUENTA": "001",
+                "SUB_MAIN_OFFER_DESC": "FIXED_A",
+            },
+            {
+                "SEGMENTO_PAIS": "SEG_A",
+                "NUMERO_IDENTIFICACION_FISCAL": "RUC_1",
+                "RAZON_SOCIAL": "CLIENT_A",
+                "COD_CLIENTE": "C1",
+                "COD_CUENTA": "001",
+                "SUB_MAIN_OFFER_DESC": "FIXED_B",
+            },
         ],
         "003_TBL_PLANTA_MOVIL_B2B.csv": [
-            {"SEGMENTO_PAIS": "SEG_A", "NUMERO_IDENTIFICACION_FISCAL": "RUC_1", "RAZON_SOCIAL": "CLIENT_A", "COD_CLIENTE": "C1", "COD_CUENTA": "001", "PRODUCT_DESC": "MOBILE_A"},
+            {
+                "SEGMENTO_PAIS": "SEG_A",
+                "NUMERO_IDENTIFICACION_FISCAL": "RUC_1",
+                "RAZON_SOCIAL": "CLIENT_A",
+                "COD_CLIENTE": "C1",
+                "COD_CUENTA": "001",
+                "PRODUCT_DESC": "MOBILE_A",
+            },
         ],
         "004_TBL_PAGOS_B2B.csv": [
-            {"TIPO_DOCUMENTO": "Pago", "NRO_IDENTIFICACION_FISCAL": "DIFFERENT_RUC", "RAZON_SOCIAL": "CLIENT_A", "COD_CLIENTE": "C1", "COD_CUENTA": "001", "SISTEMA": "SYS", "FACTURA_AFECTADA": "INV_A", "FECHA_PAGO": "2026-07-15", "MONEDA_FACTURA": "PEN", "SUBTOTAL": "50", "IGV": "0", "MONTO_PAGADO": "50"},
-            {"TIPO_DOCUMENTO": "Pago", "NRO_IDENTIFICACION_FISCAL": "DIFFERENT_RUC", "RAZON_SOCIAL": "CLIENT_A", "COD_CLIENTE": "C1", "COD_CUENTA": "001", "SISTEMA": "SYS", "FACTURA_AFECTADA": "INV_A", "FECHA_PAGO": "2026-08-05", "MONEDA_FACTURA": "PEN", "SUBTOTAL": "20", "IGV": "0", "MONTO_PAGADO": "20"},
-            {"TIPO_DOCUMENTO": "Pago", "NRO_IDENTIFICACION_FISCAL": "USD_RUC", "RAZON_SOCIAL": "CLIENT_B", "COD_CLIENTE": "C2", "COD_CUENTA": "002", "SISTEMA": "SYS", "FACTURA_AFECTADA": "MISSING_USD", "FECHA_PAGO": "2026-07-20", "MONEDA_FACTURA": "USD", "SUBTOTAL": "999", "IGV": "0", "MONTO_PAGADO": "999"},
+            {
+                "TIPO_DOCUMENTO": "Pago",
+                "NRO_IDENTIFICACION_FISCAL": "DIFFERENT_RUC",
+                "RAZON_SOCIAL": "CLIENT_A",
+                "COD_CLIENTE": "C1",
+                "COD_CUENTA": "001",
+                "SISTEMA": "SYS",
+                "FACTURA_AFECTADA": "INV_A",
+                "FECHA_PAGO": "2026-07-15",
+                "MONEDA_FACTURA": "PEN",
+                "SUBTOTAL": "50",
+                "IGV": "0",
+                "MONTO_PAGADO": "50",
+            },
+            {
+                "TIPO_DOCUMENTO": "Pago",
+                "NRO_IDENTIFICACION_FISCAL": "DIFFERENT_RUC",
+                "RAZON_SOCIAL": "CLIENT_A",
+                "COD_CLIENTE": "C1",
+                "COD_CUENTA": "001",
+                "SISTEMA": "SYS",
+                "FACTURA_AFECTADA": "INV_A",
+                "FECHA_PAGO": "2026-08-05",
+                "MONEDA_FACTURA": "PEN",
+                "SUBTOTAL": "20",
+                "IGV": "0",
+                "MONTO_PAGADO": "20",
+            },
+            {
+                "TIPO_DOCUMENTO": "Pago",
+                "NRO_IDENTIFICACION_FISCAL": "USD_RUC",
+                "RAZON_SOCIAL": "CLIENT_B",
+                "COD_CLIENTE": "C2",
+                "COD_CUENTA": "002",
+                "SISTEMA": "SYS",
+                "FACTURA_AFECTADA": "MISSING_USD",
+                "FECHA_PAGO": "2026-07-20",
+                "MONEDA_FACTURA": "USD",
+                "SUBTOTAL": "999",
+                "IGV": "0",
+                "MONTO_PAGADO": "999",
+            },
         ],
         "005_TBL_FACTURAS_B2B.csv": [
-            {"NUMERO_IDENTIFICACION_FISCAL": "BAD_RUC", "RAZON_SOCIAL": "CLIENT_A", "COD_CLIENTE": "C1", "COD_CUENTA": "001", "NRO_DOC_FISCAL": "INV_A", "FUENTE": "CICLICA", "SISTEMA": "SYS", "FECHA_EMISION": "20260701", "FECHA_VTO": "2026-07-10", "MONEDA": "PEN", "CHARGE_NET_AMOUNT": "100", "CHARGE_IGV_INVOICE": "0", "CHARGE_TOTAL_AMOUNT": "100"},
-            {"NUMERO_IDENTIFICACION_FISCAL": "RUC_2", "RAZON_SOCIAL": "CLIENT_B", "COD_CLIENTE": "C2", "COD_CUENTA": "002", "NRO_DOC_FISCAL": "INV_B", "FUENTE": "CICLICA", "SISTEMA": "SYS", "FECHA_EMISION": "20260701", "FECHA_VTO": "2026-08-10", "MONEDA": "PEN", "CHARGE_NET_AMOUNT": "200", "CHARGE_IGV_INVOICE": "0", "CHARGE_TOTAL_AMOUNT": "200"},
+            {
+                "NUMERO_IDENTIFICACION_FISCAL": "BAD_RUC",
+                "RAZON_SOCIAL": "CLIENT_A",
+                "COD_CLIENTE": "C1",
+                "COD_CUENTA": "001",
+                "NRO_DOC_FISCAL": "INV_A",
+                "FUENTE": "CICLICA",
+                "SISTEMA": "SYS",
+                "FECHA_EMISION": "20260701",
+                "FECHA_VTO": "2026-07-10",
+                "MONEDA": "PEN",
+                "CHARGE_NET_AMOUNT": "100",
+                "CHARGE_IGV_INVOICE": "0",
+                "CHARGE_TOTAL_AMOUNT": "100",
+            },
+            {
+                "NUMERO_IDENTIFICACION_FISCAL": "RUC_2",
+                "RAZON_SOCIAL": "CLIENT_B",
+                "COD_CLIENTE": "C2",
+                "COD_CUENTA": "002",
+                "NRO_DOC_FISCAL": "INV_B",
+                "FUENTE": "CICLICA",
+                "SISTEMA": "SYS",
+                "FECHA_EMISION": "20260701",
+                "FECHA_VTO": "2026-08-10",
+                "MONEDA": "PEN",
+                "CHARGE_NET_AMOUNT": "200",
+                "CHARGE_IGV_INVOICE": "0",
+                "CHARGE_TOTAL_AMOUNT": "200",
+            },
         ],
         "006_TBL_NOTAS_CREDITO_B2B.csv": [
-            {"NUMERO_IDENTIFICACION_FISCAL": "BAD_RUC", "RAZON_SOCIAL": "CLIENT_A", "COD_CLIENTE": "C1", "COD_CUENTA": "001", "NRO_DOC_FISCAL": "NC_A", "FUENTE": "NOTA", "SISTEMA": "SYS", "FACTURA_AFECTADA": "INV_A", "FECHAEMISION": "20260720", "MONEDA": "PEN", "MONTO_SIN_IGV": "10", "SUBTOTAL": "0", "MONTO": "10"},
+            {
+                "NUMERO_IDENTIFICACION_FISCAL": "BAD_RUC",
+                "RAZON_SOCIAL": "CLIENT_A",
+                "COD_CLIENTE": "C1",
+                "COD_CUENTA": "001",
+                "NRO_DOC_FISCAL": "NC_A",
+                "FUENTE": "NOTA",
+                "SISTEMA": "SYS",
+                "FACTURA_AFECTADA": "INV_A",
+                "FECHAEMISION": "20260720",
+                "MONEDA": "PEN",
+                "MONTO_SIN_IGV": "10",
+                "SUBTOTAL": "0",
+                "MONTO": "10",
+            },
         ],
     }
     for name, header in HEADERS.items():
@@ -86,19 +272,29 @@ class BICoreTests(unittest.TestCase):
         self.assertEqual(metrics["credit_notes_linked"], 10.0)
         self.assertEqual(metrics["outstanding_balance"], 240.0)
         self.assertEqual(metrics["overdue_balance"], 40.0)
-        self.assertEqual(response["data_quality"]["as_of_exclusions"]["payments_after_as_of_count"], 1)
-        self.assertEqual(response["data_quality"]["as_of_exclusions"]["unmatched_payment_amount_pen"], 0.0)
+        self.assertEqual(
+            response["data_quality"]["as_of_exclusions"]["payments_after_as_of_count"], 1
+        )
+        self.assertEqual(
+            response["data_quality"]["as_of_exclusions"]["unmatched_payment_amount_pen"], 0.0
+        )
 
     def test_plant_is_summarized_before_enrichment_and_does_not_duplicate_money(self):
-        response = self.service.risk_concentration("SERVICE_PROFILE", "outstanding_balance", 10, "2026-07-31")
+        response = self.service.risk_concentration(
+            "SERVICE_PROFILE", "outstanding_balance", 10, "2026-07-31"
+        )
         self.assertEqual(response["metrics"]["metric_total"], 240.0)
         groups = response["evidence"][0]["value"]
         fixed_mobile = next(group for group in groups if group["value"] == "FIXED_AND_MOBILE")
         self.assertEqual(fixed_mobile["outstanding_balance"], 40.0)
 
     def test_pareto_is_reproducible_and_fully_evidenced(self):
-        first = self.service.risk_concentration("SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31")
-        second = self.service.risk_concentration("SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31")
+        first = self.service.risk_concentration(
+            "SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31"
+        )
+        second = self.service.risk_concentration(
+            "SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31"
+        )
         executive = self.service.executive_snapshot("2026-07-31")
         self.assertEqual(first["evidence"], second["evidence"])
         self.assertEqual(first["evidence"][0]["value"][0]["value"], "SEG_A")
@@ -108,7 +304,9 @@ class BICoreTests(unittest.TestCase):
     def test_quality_report_documents_canonical_keys(self):
         response = self.service.data_quality_report("2026-07-31")
         self.assertEqual(response["data_quality"]["join_rules"]["customer"], "RAZON_SOCIAL")
-        self.assertEqual(response["data_quality"]["join_rules"]["document"], "NRO_DOC_FISCAL -> FACTURA_AFECTADA")
+        self.assertEqual(
+            response["data_quality"]["join_rules"]["document"], "NRO_DOC_FISCAL -> FACTURA_AFECTADA"
+        )
         self.assertTrue(response["data_quality"]["quality_checks"]["ruc_join_disabled"])
 
     def assert_evidence_traceable(self, response):
@@ -136,7 +334,9 @@ class BICoreTests(unittest.TestCase):
         self.assertEqual(customers[-1]["cumulative_share"], 1.0)
         self.assertEqual(groups[-1]["cumulative_share"], 1.0)
         self.assertEqual(sum(item["share"] for item in groups), 1.0)
-        self.assertEqual(response["metrics"]["top_n_customer_coverage"], customers[-1]["cumulative_share"])
+        self.assertEqual(
+            response["metrics"]["top_n_customer_coverage"], customers[-1]["cumulative_share"]
+        )
 
     def test_recovery_respects_cutoff_and_changes_its_opportunities(self):
         before_due = self.service.recovery_intelligence("2026-07-09")
@@ -150,24 +350,35 @@ class BICoreTests(unittest.TestCase):
 
     def test_credit_note_creates_document_review_not_billing_error(self):
         response = self.service.recovery_intelligence("2026-07-31")
-        document_finding = next(item for item in response["findings"] if item["type"] == "DOCUMENT_REVIEW_OPPORTUNITY")
+        document_finding = next(
+            item for item in response["findings"] if item["type"] == "DOCUMENT_REVIEW_OPPORTUNITY"
+        )
         self.assertIn("does not establish a billing error", document_finding["impact"])
         self.assertFalse(any("ERROR" in item["type"] for item in response["findings"]))
-        self.assertTrue(any(item["action"] == "review_document_adjustments_before_contact" for item in response["recommended_actions"]))
+        self.assertTrue(
+            any(
+                item["action"] == "review_document_adjustments_before_contact"
+                for item in response["recommended_actions"]
+            )
+        )
 
     def test_management_insights_are_priority_ordered_and_quality_is_separate(self):
         response = self.service.management_insights("2026-07-31")
         priority = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "INFO": 3}
         finding_priorities = [priority[item["severity"]] for item in response["findings"]]
         self.assertEqual(finding_priorities, sorted(finding_priorities))
-        self.assertTrue(all(not item["type"].startswith("DATA_QUALITY") for item in response["findings"]))
+        self.assertTrue(
+            all(not item["type"].startswith("DATA_QUALITY") for item in response["findings"])
+        )
         self.assertTrue(any(item["type"].startswith("DATA_QUALITY") for item in response["alerts"]))
         self.assert_evidence_traceable(response)
 
     def test_management_insights_change_with_cutoff_and_dataset(self):
         before_due = self.service.management_insights("2026-07-09")
         after_due = self.service.management_insights("2026-07-31")
-        self.assertNotEqual(before_due["metrics"]["overdue_balance"], after_due["metrics"]["overdue_balance"])
+        self.assertNotEqual(
+            before_due["metrics"]["overdue_balance"], after_due["metrics"]["overdue_balance"]
+        )
         with tempfile.TemporaryDirectory() as folder:
             changed = Path(folder)
             write_dataset(changed)
@@ -179,11 +390,15 @@ class BICoreTests(unittest.TestCase):
                     row["CHARGE_NET_AMOUNT"] = "500"
                     row["CHARGE_TOTAL_AMOUNT"] = "500"
             with invoice_path.open("w", encoding="latin1", newline="") as target:
-                writer = csv.DictWriter(target, fieldnames=HEADERS["005_TBL_FACTURAS_B2B.csv"], delimiter="|")
+                writer = csv.DictWriter(
+                    target, fieldnames=HEADERS["005_TBL_FACTURAS_B2B.csv"], delimiter="|"
+                )
                 writer.writeheader()
                 writer.writerows(rows)
             changed_response = BIService(changed).management_insights("2026-07-31")
-        self.assertNotEqual(after_due["metrics"]["overdue_balance"], changed_response["metrics"]["overdue_balance"])
+        self.assertNotEqual(
+            after_due["metrics"]["overdue_balance"], changed_response["metrics"]["overdue_balance"]
+        )
 
     def test_collections_response_boundary_is_json_only_and_does_not_recalculate_priority(self):
         collections_response = {
@@ -194,7 +409,11 @@ class BICoreTests(unittest.TestCase):
             "evidence": [{"customer": "CLIENT_A", "priority_score": 99}],
         }
         response = BIService(self.dataset, collections_response).recovery_intelligence("2026-07-31")
-        upstream = next(item for item in response["upstream_inputs"] if item["type"] == "collections_agent_response")
+        upstream = next(
+            item
+            for item in response["upstream_inputs"]
+            if item["type"] == "collections_agent_response"
+        )
         self.assertEqual(upstream["status"], "reference_only")
         self.assertTrue(upstream["priority_evidence_available"])
         self.assertNotIn("priority_score", response["metrics"])
@@ -203,7 +422,9 @@ class BICoreTests(unittest.TestCase):
         schemas = tool_schemas()
         self.assertEqual({schema["name"] for schema in schemas}, TOOL_NAMES)
         self.assertEqual(len(schemas), 5)
-        self.assertTrue(all(schema["parameters"]["additionalProperties"] is False for schema in schemas))
+        self.assertTrue(
+            all(schema["parameters"]["additionalProperties"] is False for schema in schemas)
+        )
 
     def test_agent_fallback_routes_demo_questions_and_preserves_original_response(self):
         cases = [
@@ -226,12 +447,16 @@ class BICoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_arguments("risk_concentration", {"sql": "select *"}, "2026-07-31")
         with self.assertRaises(ValueError):
-            validate_arguments("risk_concentration", {"dimension": "__import__('os')"}, "2026-07-31")
+            validate_arguments(
+                "risk_concentration", {"dimension": "__import__('os')"}, "2026-07-31"
+            )
         with self.assertRaises(ValueError):
             ask(self.service, "x" * 1001, "2026-07-31")
 
     def test_dispatch_forces_requested_cutoff_and_only_service_computes(self):
-        result = dispatch(self.service, "executive_snapshot", {"as_of_date": "2020-01-01"}, "2026-07-31")
+        result = dispatch(
+            self.service, "executive_snapshot", {"as_of_date": "2020-01-01"}, "2026-07-31"
+        )
         self.assertEqual(result["as_of_date"], "2026-07-31")
         self.assertEqual(result["metrics"]["outstanding_balance"], 240.0)
 
@@ -244,7 +469,9 @@ class BICoreTests(unittest.TestCase):
         self.assertTrue(any(item["type"] == "kpi_cards" for item in spec["components"]))
 
     def test_visual_catalog_resolves_indexed_evidence_hints_for_risk_tables(self):
-        response = self.service.risk_concentration("SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31")
+        response = self.service.risk_concentration(
+            "SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31"
+        )
         spec = dashboard_spec(response)
         ranking = next(item for item in spec["components"] if item["type"] == "ranking_table")
         self.assertEqual(ranking["source_id"], "top_customers")
@@ -252,7 +479,9 @@ class BICoreTests(unittest.TestCase):
 
     def test_visual_catalog_resolves_first_class_findings_and_aging_sources(self):
         recovery = dashboard_spec(self.service.recovery_intelligence("2026-07-31"))
-        opportunity = next(item for item in recovery["components"] if item["type"] == "opportunity_table")
+        opportunity = next(
+            item for item in recovery["components"] if item["type"] == "opportunity_table"
+        )
         self.assertTrue(opportunity["data"])
         executive = dashboard_spec(self.service.executive_snapshot("2026-07-31"))
         aging = next(item for item in executive["components"] if item["type"] == "aging_bar")
@@ -314,8 +543,10 @@ class BICoreTests(unittest.TestCase):
     def test_llm_failure_falls_back_without_breaking_deterministic_tools(self):
         class BrokenRuntime:
             available = True
+
             def select_tool(self, question, as_of_date):
                 raise RuntimeError("API unavailable")
+
         result = BIBackend(service=self.service, runtime=BrokenRuntime()).query(
             "¿Cómo está la cartera?",
             "2026-07-31",
@@ -330,7 +561,16 @@ class BICoreTests(unittest.TestCase):
             backend.query("¿Cómo está la cartera?", "2026-07-31")
 
     def test_openai_runtime_is_mockable_and_requires_exactly_one_function_call(self):
-        response = {"output": [{"type": "function_call", "name": "executive_snapshot", "call_id": "call_1", "arguments": "{}"}]}
+        response = {
+            "output": [
+                {
+                    "type": "function_call",
+                    "name": "executive_snapshot",
+                    "call_id": "call_1",
+                    "arguments": "{}",
+                }
+            ]
+        }
         runtime = OpenAIRuntime(post=lambda payload, key: response)
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}, clear=True):
             choice = runtime.select_tool("resumen", "2026-07-31")
@@ -338,7 +578,9 @@ class BICoreTests(unittest.TestCase):
         self.assertEqual(choice["arguments"], {})
 
     def test_presentation_labels_metrics_without_changing_numeric_values_or_response(self):
-        response = self.service.risk_concentration("SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31")
+        response = self.service.risk_concentration(
+            "SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31"
+        )
         original = copy.deepcopy(response)
         view = presentation_for(response, dashboard_spec(response))
         self.assertEqual(response, original)
@@ -348,7 +590,9 @@ class BICoreTests(unittest.TestCase):
         self.assertEqual(view["kpis"][1]["value"], response["evidence"][0]["value"][0]["share"])
 
     def test_presentation_humanizes_risk_story_and_preserves_anonymous_identifiers(self):
-        response = self.service.risk_concentration("SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31")
+        response = self.service.risk_concentration(
+            "SEGMENTO_PAIS", "overdue_balance", 10, "2026-07-31"
+        )
         view = presentation_for(response, dashboard_spec(response))
         finding = view["findings"][0]
         self.assertEqual(finding["title"], "Alta concentración del saldo vencido")
@@ -373,14 +617,19 @@ class BICoreTests(unittest.TestCase):
             visible = " ".join(
                 [view["analysis"]["title"], view["analysis"]["description"]]
                 + [item["label"] for item in view["kpis"]]
-                + [item["title"] + " " + item["detail"] for item in view["findings"] + view["recommended_actions"] + view["alerts"]]
+                + [
+                    item["title"] + " " + item["detail"]
+                    for item in view["findings"] + view["recommended_actions"] + view["alerts"]
+                ]
             )
             self.assertNotIn("The leading", visible)
             self.assertNotIn("overdue_balance", visible)
             self.assertNotIn("RISK_CONCENTRATION", visible)
         executive_view = presentation_for(responses[0], dashboard_spec(responses[0]))
         self.assertEqual(executive_view["alerts"][0]["title"], "Pagos sin factura vinculada")
-        self.assertEqual(executive_view["alerts"][0]["technical_type"], "DATA_QUALITY_UNMATCHED_PAYMENTS")
+        self.assertEqual(
+            executive_view["alerts"][0]["technical_type"], "DATA_QUALITY_UNMATCHED_PAYMENTS"
+        )
 
     def test_presentation_is_identical_for_deterministic_and_llm_result_payloads(self):
         payload = self.service.executive_snapshot("2026-07-31")
