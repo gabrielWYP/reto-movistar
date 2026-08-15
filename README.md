@@ -67,7 +67,11 @@ python -m venv .venv
 .venv/bin/python -m sonia
 ```
 
-Los contratos operativos están disponibles en `GET /health` y
-`GET /api/agents`. Producción publica imágenes independientes desde
+Los contratos operativos están disponibles en `GET /health`, `GET /api/agents`
+y `/api/bi/*`. Para ejecutar análisis BI, el pod `back` debe recibir un montaje
+de solo lectura configurado con `SONIA_BI_DATASET_PATH`; la API y sus health
+checks pueden iniciar sin ese dataset.
+
+Producción publica imágenes independientes desde
 `front/Dockerfile` y `back/Dockerfile`; el `Dockerfile` raíz se conserva
 solo para compatibilidad local.

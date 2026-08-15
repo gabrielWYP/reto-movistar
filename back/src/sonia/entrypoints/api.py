@@ -9,6 +9,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from sonia.agents.bi import BIBackend
+from sonia.agents.bi.api import create_bi_router
 from sonia.application.agent_registry import get_agent, list_agents
 from sonia.application.demo_service import build_demo_scenario, transition_demo
 from sonia.config import Settings, get_settings
@@ -20,7 +22,10 @@ from sonia.observability.logging import configure_logging
 logger = logging.getLogger(__name__)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    bi_backend: BIBackend | None = None,
+) -> FastAPI:
     """Create an application instance with explicit runtime dependencies."""
     runtime_settings = settings or get_settings()
     configure_logging(runtime_settings.log_level)
@@ -30,6 +35,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=runtime_settings.app_version,
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
+    )
+    application.include_router(
+        create_bi_router(
+            bi_backend or BIBackend(dataset_path=runtime_settings.bi_dataset_path)
+        )
     )
 
     @application.middleware("http")

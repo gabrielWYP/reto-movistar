@@ -1,102 +1,87 @@
-# SON-IA Business Intelligence Agent v1.1
+# Agente BI integrado
 
-Agente BI para la demo SON-IA: convierte el ciclo de ingresos B2B del dataset del hackathon en decisiones explicables. Los cálculos financieros son determinísticos; la IA opcional solo selecciona una herramienta cerrada e interpreta el resultado respaldado por evidencia.
-
-## Arquitectura
+El Agente BI es un módulo interno del backend común SON-IA. No posee servidor,
+frontend, puerto ni Deployment propios.
 
 ```text
-Consulta en navegador / Supervisor futuro
-              ↓
-Agent runtime (router determinístico o LLM opcional)
-              ↓
-Una de las 5 tools cerradas
-              ↓
-BIService → canonical revenue model → CSV oficiales
-              ↓
-AgentResponse + evidence + visualization_hints
-              ↓
-Adaptive Dashboard declarativo
+Usuario
+  ↓
+Pod front: Nginx + SPA estática
+  ↓ /api/bi/*
+Pod back: FastAPI
+  ↓
+BIBackend → ask/dispatch → BIService → modelo canónico
+                         ↓
+              AgentResponse + evidencia
+                         ↓
+           presentation + dashboard declarativo
 ```
 
-El frontend no calcula importes. El catálogo visual es cerrado: KPI cards, barras, Pareto, ageing, tablas de ranking/oportunidades/evidencia, insight cards y alert cards. Los hints desconocidos se ignoran explícitamente; nunca se ejecuta código generado por un modelo.
+La decisión de despliegue está documentada en
+`docs/arquitectura/decisiones/ADR-002-client-server-two-pods.md`: un pod
+`front` y un pod `back` para toda SON-IA. Facturación, Cobranzas y BI son
+módulos del mismo backend; BI no crea pods ni servicios adicionales.
 
-## Presentación para negocio
+## Boundary pública
 
-`presentation.py` transforma el resultado técnico en etiquetas, definiciones y relatos ejecutivos en español sin mutar el `AgentResponse`. Por ejemplo, `overdue_balance` se presenta como **Saldo vencido** y `DATA_QUALITY_UNMATCHED_PAYMENTS` como **Pagos sin factura vinculada**. Los códigos, evidence IDs, parámetros y JSON original permanecen disponibles dentro de **Ver evidencia y trazabilidad técnica**.
+El backend compartido monta:
 
-La capa visual conserva los identificadores anonimizados del dataset (por ejemplo, `CLIENT_00915` y `SEGMENTO_002`); no inventa nombres de clientes ni modifica evidencia o valores numéricos.
+- `GET /api/bi/status`: disponibilidad del dataset, modo LLM y tools.
+- `POST /api/bi/query`: pregunta natural, fecha de corte y respuesta completa.
+- `POST /api/bi/tools/{operation}`: invocación determinística de una tool.
 
-## Tools disponibles
+`BIBackend` también puede ser importado por el Supervisor sin depender de HTTP
+ni del frontend. El resultado conserva `AgentResponse`, evidencia, dashboard
+declarativo y presentación humanizada.
 
-| Tool | Responde |
-|---|---|
-| `executive_snapshot` | Estado general del ciclo de ingresos, saldo, vencimiento y ageing. |
-| `risk_concentration` | Dónde se concentra la exposición por dimensión permitida. |
-| `recovery_intelligence` | Oportunidad de recupero, Pareto, seguimiento preventivo y contexto documental. |
-| `management_insights` | Qué debería conocer y priorizar la gerencia. |
-| `data_quality_report` | Fuentes, joins, moneda, exclusiones y limitaciones. |
+Las cinco operaciones autorizadas son:
 
-Las dimensiones permitidas son `SEGMENTO_PAIS`, `SUNAT_DEPARTAMENTO`, `SISTEMA`, `FUENTE` y `SERVICE_PROFILE`.
+- `data_quality_report`
+- `executive_snapshot`
+- `risk_concentration`
+- `recovery_intelligence`
+- `management_insights`
 
-## BI frente a Cobranzas
+## Dataset y configuración
 
-Cobranzas responde qué se pagó, qué documentos están pendientes y qué casos deben gestionar los gestores. BI responde qué significa la exposición a nivel de negocio: concentración, cobertura Pareto, oportunidades y estrategia. BI no genera un `priority_score` alternativo.
+El dataset oficial no se incorpora a Git ni a las imágenes. En ejecución se
+monta como volumen de solo lectura y se configura mediante:
 
-`integration.py` conserva un boundary JSON público para recibir en el futuro un `AgentResponse` de Cobranzas. No importa sus clases privadas, no requiere que el agente esté activo y en v1.0 solo registra procedencia.
-
-## Abrir la demo local
-
-Desde la raíz del repositorio:
-
-```powershell
-$env:PYTHONPATH = "src"
-python -m bi_agent.web_app --dataset "C:\Disco D\Universidad\Hackathon MOVISTAR BOOTCAMP\SONIA_DESAFIO_03\DATASET" --port 8502 --open
+```text
+SONIA_BI_DATASET_PATH=/ruta/montada/DATASET
 ```
 
-O abre `Iniciar Agente BI.cmd`. La interfaz escucha solo en `127.0.0.1:8502`, distinto del puerto 8501 utilizado por la interfaz de Cobranzas actual.
+Puede ser un directorio con los seis CSV o un ZIP oficial. La carga es lazy:
+el backend y `/health` funcionan aunque BI todavía no tenga dataset; sus
+endpoints de cálculo responden `503` hasta que se configure.
 
-No se requiere API key: las sugerencias, las cinco tools, los gráficos, las tablas y la trazabilidad funcionan en modo determinístico.
+`OPENAI_API_KEY` y `SONIA_BI_MODEL` habilitan opcionalmente selección de tool y
+redacción asistida. Sin API key, el router determinístico y las cinco tools
+siguen funcionando. Los CSV y el modelo canónico nunca se envían al LLM.
 
-## Modo IA opcional
+## CLI de backend
 
-Para permitir que un modelo OpenAI elija la tool e interprete el JSON compacto:
+La CLI continúa siendo útil para pruebas operativas sin frontend:
 
-```powershell
-$env:OPENAI_API_KEY = "..."
-# Opcional: $env:SONIA_BI_MODEL = "gpt-5.6-terra"
-python -m bi_agent.web_app --dataset "RUTA_DATASET" --port 8502 --open
+```bash
+cd back
+python -m sonia.agents.bi.cli --dataset /ruta/DATASET --as-of-date 2026-07-31 executive
+python -m sonia.agents.bi.cli --dataset /ruta/DATASET --as-of-date 2026-07-31 recovery
+python -m sonia.agents.bi.cli --dataset /ruta/DATASET --as-of-date 2026-07-31 insights
 ```
 
-La key no se guarda en Git. Solo se envían la pregunta, schemas de las cinco tools y el resultado compacto de la tool ya ejecutada; nunca los CSV ni el canonical model. Si falla la API, el endpoint vuelve a modo determinístico sin afectar los cálculos.
+## Responsabilidades y límites
 
-## Preguntas demo
+- Python ejecuta joins, saldos, ageing, Pareto, concentraciones y reglas.
+- La IA solo selecciona una tool cerrada e interpreta su resultado.
+- `presentation.py` humaniza sin mutar el contrato técnico.
+- `visuals.py` acepta un catálogo cerrado de componentes.
+- `integration.py` mantiene el boundary JSON futuro con Cobranzas.
+- Solo PEN entra en KPIs monetarios del MVP; USD no se mezcla.
+- `RAZON_SOCIAL` es la clave temporal de cliente y
+  `NRO_DOC_FISCAL → FACTURA_AFECTADA` la llave documental.
+- Una nota de crédito aporta contexto de revisión, no prueba un error.
+- El análisis describe la muestra anonimizada del hackathon, no toda Integratel.
 
-1. `¿Cómo está el ciclo de ingresos al 31 de julio?` → `executive_snapshot`
-2. `¿Dónde está concentrado el saldo vencido?` → `risk_concentration`
-3. `¿Qué oportunidades de recupero tenemos?` → `recovery_intelligence`
-4. `¿Qué debería priorizar la gerencia?` → `management_insights`
-5. `¿Qué limitaciones tiene la información?` → `data_quality_report`
-
-La fecha de corte siempre es visible, se propaga a la tool y queda en el `AgentResponse`.
-
-## Trazabilidad y límites
-
-La sección **Ver evidencia y trazabilidad** expone la tool, parámetros, metodología, upstream inputs y el JSON completo. Todos los findings, alertas y recomendaciones relevantes usan `evidence_refs`.
-
-- Solo PEN entra a los KPIs monetarios; USD, moneda ausente e incompatibilidades no se mezclan.
-- `RAZON_SOCIAL` es la clave temporal de cliente; `NRO_DOC_FISCAL → FACTURA_AFECTADA` es la llave documental; planta se resume primero por `COD_CUENTA`.
-- Una nota de crédito implica contexto de revisión documental, no prueba de error de facturación.
-- No hay causalidad, conciliación bancaria, provisión contable, forecast, ML ni predicción.
-- El resultado describe el dataset anonimizado del hackathon, no toda Integratel.
-
-## CLI determinística
-
-```powershell
-python -m bi_agent.cli --dataset "RUTA_DATASET" --as-of-date 2026-07-31 executive
-python -m bi_agent.cli --dataset "RUTA_DATASET" --as-of-date 2026-07-31 recovery
-python -m bi_agent.cli --dataset "RUTA_DATASET" --as-of-date 2026-07-31 insights
-```
-
-## Futuro
-
-Quedan fuera de v1.0: integración final con Supervisor, consumo operativo del output de Facturación/Cobranzas, LLM obligatorio, Adaptive Dashboard generado libremente, HTML externo, ML, forecast y predicción de mora.
+No se implementan aquí Supervisor, ML, forecast, conciliación bancaria ni un
+ranking de cobranza alternativo.

@@ -7,12 +7,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from sonia.agents.bi import BIBackend
 from sonia.agents.bi.agent import TOOL_NAMES, ask, dispatch, tool_schemas, validate_arguments
+from sonia.agents.bi.api import create_bi_router
 from sonia.agents.bi.llm_runtime import OpenAIRuntime
 from sonia.agents.bi.presentation import METRIC_LABELS, presentation_for
 from sonia.agents.bi.service import BIService
 from sonia.agents.bi.visuals import ALLOWED_COMPONENTS, dashboard_spec
-from sonia.agents.bi.web_app import create_server, route_payload
 
 
 HEADERS = {
@@ -251,24 +255,52 @@ class BICoreTests(unittest.TestCase):
         aging = next(item for item in executive["components"] if item["type"] == "aging_bar")
         self.assertTrue(aging["data"])
 
-    def test_web_routes_use_agent_and_safe_fixed_surface_without_api_key(self):
+    def test_fastapi_boundary_uses_agent_without_api_key(self):
         runtime = OpenAIRuntime()
+        application = FastAPI()
+        application.include_router(
+            create_bi_router(BIBackend(service=self.service, runtime=runtime))
+        )
         with patch.dict("os.environ", {}, clear=True):
-            status, state = route_payload(self.service, runtime, "/api/status")
-            self.assertEqual(status, 200)
-            self.assertFalse(state["llm_available"])
-            status, result = route_payload(self.service, runtime, "/api/query", {"question": "¿Qué oportunidades de recupero tenemos?", "as_of_date": "2026-07-31"})
-        self.assertEqual(status, 200)
+            with TestClient(application) as client:
+                status = client.get("/api/bi/status")
+                response = client.post(
+                    "/api/bi/query",
+                    json={
+                        "question": "¿Qué oportunidades de recupero tenemos?",
+                        "as_of_date": "2026-07-31",
+                    },
+                )
+                unknown = client.post(
+                    "/api/bi/tools/__import__",
+                    json={"as_of_date": "2026-07-31", "parameters": {}},
+                )
+        self.assertEqual(status.status_code, 200)
+        self.assertFalse(status.json()["llm_available"])
+        self.assertEqual(set(status.json()["tools"]), TOOL_NAMES)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
         self.assertEqual(result["tool_used"], "recovery_intelligence")
         self.assertIn("components", result["dashboard"])
         self.assertIn("presentation", result)
-        self.assertEqual(result["presentation"]["analysis"]["title"], "Oportunidades de recupero")
-        missing_status, missing = route_payload(self.service, runtime, "/api/../../secret")
-        self.assertEqual(missing_status, 404)
-        self.assertIn("error", missing)
-        tool_status, tool_error = route_payload(self.service, runtime, "/api/tool?operation=__import__")
-        self.assertEqual(tool_status, 400)
-        self.assertIn("error", tool_error)
+        self.assertEqual(
+            result["presentation"]["analysis"]["title"],
+            "Oportunidades de recupero",
+        )
+        self.assertEqual(unknown.status_code, 404)
+
+    def test_fastapi_boundary_rejects_unknown_arguments(self):
+        application = FastAPI()
+        application.include_router(create_bi_router(BIBackend(service=self.service)))
+        with TestClient(application) as client:
+            response = client.post(
+                "/api/bi/tools/risk_concentration",
+                json={
+                    "as_of_date": "2026-07-31",
+                    "parameters": {"sql": "select * from invoices"},
+                },
+            )
+        self.assertEqual(response.status_code, 422)
 
     def test_management_dashboard_does_not_duplicate_hint_components(self):
         spec = dashboard_spec(self.service.management_insights("2026-07-31"))
@@ -281,10 +313,18 @@ class BICoreTests(unittest.TestCase):
             available = True
             def select_tool(self, question, as_of_date):
                 raise RuntimeError("API unavailable")
-        status, result = route_payload(self.service, BrokenRuntime(), "/api/query", {"question": "¿Cómo está la cartera?", "as_of_date": "2026-07-31"})
-        self.assertEqual(status, 200)
+        result = BIBackend(service=self.service, runtime=BrokenRuntime()).query(
+            "¿Cómo está la cartera?",
+            "2026-07-31",
+        )
         self.assertEqual(result["mode"], "deterministic_fallback")
         self.assertEqual(result["agent_response"]["operation"], "executive_snapshot")
+
+    def test_backend_without_dataset_starts_but_calculation_is_unavailable(self):
+        backend = BIBackend()
+        self.assertFalse(backend.configured)
+        with self.assertRaises(RuntimeError):
+            backend.query("¿Cómo está la cartera?", "2026-07-31")
 
     def test_openai_runtime_is_mockable_and_requires_exactly_one_function_call(self):
         response = {"output": [{"type": "function_call", "name": "executive_snapshot", "call_id": "call_1", "arguments": "{}"}]}
