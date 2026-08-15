@@ -8,7 +8,8 @@ from typing import Any, Callable
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from .agent import SYSTEM_PROMPT, tool_schemas
+from .agent import tool_schemas
+from .prompting import SYSTEM_PROMPT
 
 API_URL = "https://api.openai.com/v1/responses"
 DEFAULT_MODEL = "gpt-5.6-terra"
@@ -54,12 +55,19 @@ class OpenAIRuntime:
         key = os.environ.get("OPENAI_API_KEY")
         if not key:
             raise RuntimeError("OPENAI_API_KEY no está configurada; usa el modo determinístico.")
+        referenced_ids = {
+            evidence_id
+            for collection in ("findings", "alerts", "recommended_actions")
+            for item in tool_result.get(collection, [])
+            for evidence_id in item.get("evidence_refs", [])
+        }
         compact = {
             "operation": tool_result.get("operation"), "as_of_date": tool_result.get("as_of_date"), "metrics": tool_result.get("metrics"),
             "findings": tool_result.get("findings"), "alerts": tool_result.get("alerts"), "recommended_actions": tool_result.get("recommended_actions"),
-            "evidence": tool_result.get("evidence"), "data_quality": tool_result.get("data_quality"),
+            "evidence": [item for item in tool_result.get("evidence", []) if item.get("id") in referenced_ids],
+            "data_quality": tool_result.get("data_quality"),
         }
-        response = self._post({"model": os.environ.get("SONIA_BI_MODEL", DEFAULT_MODEL), "store": False, "instructions": SYSTEM_PROMPT + "\nRedacta una respuesta breve usando exclusivamente el JSON recibido.", "input": [{"role": "user", "content": [{"type": "input_text", "text": f"Pregunta: {question}\nResultado determinístico: {json.dumps(compact, ensure_ascii=False)}"}]}], "max_output_tokens": 600}, key)
+        response = self._post({"model": os.environ.get("SONIA_BI_MODEL", DEFAULT_MODEL), "store": False, "instructions": SYSTEM_PROMPT, "input": [{"role": "user", "content": [{"type": "input_text", "text": f"Interpreta brevemente esta pregunta usando exclusivamente el resultado determinístico.\nPregunta: {question}\nResultado determinístico: {json.dumps(compact, ensure_ascii=False)}"}]}], "max_output_tokens": 600}, key)
         answer = response.get("output_text", "").strip()
         if not answer:
             raise RuntimeError("El modelo no devolvió una interpretación textual.")

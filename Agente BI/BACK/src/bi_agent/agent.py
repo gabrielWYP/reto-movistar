@@ -7,16 +7,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Callable
 
+from .prompting import SYSTEM_PROMPT, prompt_metadata
 from .service import ALLOWED_DIMENSIONS, ALLOWED_METRICS, BIService
-
-SYSTEM_PROMPT = """Eres SON-IA Business Intelligence Agent para el dataset del hackathon.
-Nunca calcules importes, saldos, ratios, ageing, Pareto ni concentraciones: usa exactamente una tool.
-Solo usa las cinco tools expuestas y sus parámetros válidos. No inventes tools, clientes, segmentos ni métricas.
-Explica únicamente el resultado de la tool y sus evidence_refs. No afirmes causalidad, conciliación bancaria,
-predicción, provisión contable ni que una nota de crédito prueba un error de facturación.
-Los datos son una muestra anonimizada del hackathon, no toda Integratel. Separa business findings de alertas de calidad.
-Mantén un tono ejecutivo y accionable: situación, hallazgo principal, impacto, acción y una limitación breve cuando aplique.
-"""
 
 TOOL_NAMES = {
     "executive_snapshot",
@@ -176,6 +168,29 @@ def deterministic_narrative(payload: dict[str, Any]) -> str:
     return answer.strip()
 
 
+def _apply_question_guardrails(question: str, answer: str) -> str:
+    """Add deterministic scope clarification without creating new metrics."""
+    normalized = question.casefold()
+    if any(term in normalized for term in ("predice", "predicción", "pronóstico", "forecast", "próximo mes")):
+        return (
+            "No existe una herramienta predictiva en este MVP, por lo que no puedo "
+            "afirmar la mora futura. " + answer
+        )
+    if "por qué" in normalized and any(term in normalized for term in ("no paga", "mora", "deuda")):
+        return (
+            "La información disponible permite describir concentración o asociación, "
+            "pero no demostrar la causa del comportamiento de pago. " + answer
+        )
+    mentions_usd = any(term in normalized for term in ("dólar", "dolar", "usd"))
+    mentions_pen = any(term in normalized for term in ("soles", "pen", "sol "))
+    if mentions_usd and mentions_pen:
+        return (
+            "No se suman PEN y USD: los KPIs monetarios de este MVP consideran "
+            "únicamente PEN. " + answer
+        )
+    return answer
+
+
 def ask(service: BIService, question: str, as_of_date: str, runtime: Any | None = None) -> dict[str, Any]:
     """Public supervisor/UI interface. Runtime is optional; deterministic mode always works."""
     if not isinstance(question, str) or not question.strip() or len(question) > 1000:
@@ -189,5 +204,9 @@ def ask(service: BIService, question: str, as_of_date: str, runtime: Any | None 
     else:
         tool_name, arguments = deterministic_route(question, as_of_date)
         payload = dispatch(service, tool_name, arguments, as_of_date)
-        answer, mode = deterministic_narrative(payload), "deterministic"
-    return AgentResult(answer, tool_name, arguments, payload, mode).to_dict()
+        answer = _apply_question_guardrails(question, deterministic_narrative(payload))
+        mode = "deterministic"
+    result = AgentResult(answer, tool_name, arguments, payload, mode).to_dict()
+    if mode == "llm":
+        result["prompt"] = prompt_metadata()
+    return result

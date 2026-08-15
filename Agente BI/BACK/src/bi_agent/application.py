@@ -9,6 +9,7 @@ from typing import Any
 from .agent import ask, dispatch, validate_arguments
 from .llm_runtime import OpenAIRuntime
 from .presentation import presentation_for
+from .prompting import prompt_metadata
 from .service import BIService
 from .visuals import dashboard_spec
 
@@ -71,6 +72,7 @@ class BIBackend:
             result = ask(self.service(), question, as_of_date, None)
             result["mode"] = "deterministic_fallback"
             result["runtime_warning"] = str(error)
+            result["prompt"] = prompt_metadata()
         return self._present(result)
 
     def execute_tool(

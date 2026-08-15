@@ -1,4 +1,4 @@
-"""FastAPI boundary for the integrated SON-IA BI agent.
+"""FastAPI boundary for the standalone SON-IA BI backend.
 
 The module contains no financial rules.  It validates HTTP input, delegates to
 the public agent/service boundary and adds the declarative presentation model
@@ -10,11 +10,12 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from .agent import TOOL_NAMES
 from .application import BIBackend
+from .config import Settings, get_settings
 
 
 class BIQueryRequest(BaseModel):
@@ -73,3 +74,28 @@ def create_bi_router(backend: BIBackend) -> APIRouter:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
     return router
+
+
+def create_app(
+    settings: Settings | None = None,
+    backend: BIBackend | None = None,
+) -> FastAPI:
+    """Create the independent backend while preserving the shared API contract."""
+    runtime_settings = settings or get_settings()
+    application = FastAPI(
+        title="SON-IA Business Intelligence Agent",
+        version="1.0.0",
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+    )
+    runtime_backend = backend or BIBackend(dataset_path=runtime_settings.dataset_path)
+    application.include_router(create_bi_router(runtime_backend))
+
+    @application.get("/health", tags=["platform"])
+    def health() -> dict[str, str]:
+        return {"status": "ok", "service": "sonia-bi-back"}
+
+    return application
+
+
+app = create_app()

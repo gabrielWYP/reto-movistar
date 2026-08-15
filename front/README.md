@@ -11,7 +11,3 @@ Variables del contenedor:
 
 La interfaz simula un journey controlado con datos ficticios. No persiste casos,
 no emite facturas reales y no aplica pagos.
-
-La configuración visual de BI declara sus rutas bajo `/api/bi/*`. Toda cifra,
-evidencia, presentación y especificación de dashboard procede del backend; el
-frontend no lee CSV, no usa API keys y no replica reglas financieras.

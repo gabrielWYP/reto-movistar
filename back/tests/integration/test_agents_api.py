@@ -39,18 +39,3 @@ def test_unknown_agent_returns_not_found() -> None:
         response = client.get("/api/agents/unknown")
 
     assert response.status_code == 404
-
-
-def test_shared_fastapi_app_mounts_bi_without_requiring_the_frontend() -> None:
-    """The common backend must own BI HTTP and start without a mounted dataset."""
-    with TestClient(create_app(_settings())) as client:
-        status = client.get("/api/bi/status")
-        query = client.post(
-            "/api/bi/query",
-            json={"question": "¿Cómo está la cartera?", "as_of_date": "2026-07-31"},
-        )
-
-    assert status.status_code == 200
-    assert status.json()["dataset_configured"] is False
-    assert len(status.json()["tools"]) == 5
-    assert query.status_code == 503

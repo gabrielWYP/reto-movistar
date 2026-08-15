@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import copy
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,13 +11,15 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from sonia.agents.bi import BIBackend
-from sonia.agents.bi.agent import TOOL_NAMES, ask, dispatch, tool_schemas, validate_arguments
-from sonia.agents.bi.api import create_bi_router
-from sonia.agents.bi.llm_runtime import OpenAIRuntime
-from sonia.agents.bi.presentation import METRIC_LABELS, presentation_for
-from sonia.agents.bi.service import BIService
-from sonia.agents.bi.visuals import ALLOWED_COMPONENTS, dashboard_spec
+from bi_agent import BIBackend
+from bi_agent.agent import TOOL_NAMES, ask, dispatch, tool_schemas, validate_arguments
+from bi_agent.api import create_app, create_bi_router
+from bi_agent.config import Settings
+from bi_agent.llm_runtime import OpenAIRuntime
+from bi_agent.presentation import METRIC_LABELS, presentation_for
+from bi_agent.prompting import SYSTEM_PROMPT, load_system_prompt
+from bi_agent.service import BIService
+from bi_agent.visuals import ALLOWED_COMPONENTS, dashboard_spec
 
 
 HEADERS = {
@@ -385,3 +388,84 @@ class BICoreTests(unittest.TestCase):
         deterministic = presentation_for(payload, dashboard)
         llm_mode = presentation_for(payload, dashboard)
         self.assertEqual(deterministic, llm_mode)
+
+    def test_standalone_fastapi_health_and_shared_contract(self):
+        settings = Settings("0.0.0.0", 8080, "INFO", None)
+        application = create_app(settings, BIBackend(service=self.service))
+        with TestClient(application) as client:
+            health = client.get("/health")
+            status = client.get("/api/bi/status")
+            query = client.post(
+                "/api/bi/query",
+                json={
+                    "question": "¿Dónde está concentrado el saldo vencido?",
+                    "as_of_date": "2026-07-31",
+                },
+            )
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(status.status_code, 200)
+        self.assertEqual(query.status_code, 200)
+        self.assertEqual(query.json()["tool_used"], "risk_concentration")
+        self.assertEqual(query.json()["agent_response"]["contract_version"], "1.0")
+
+    def test_prompt_resource_is_versioned_single_source_of_truth(self):
+        definition = load_system_prompt()
+        source = Path(__file__).resolve().parents[1] / "prompts" / "system_v1.md"
+        raw = source.read_text(encoding="utf-8")
+        self.assertEqual(definition.prompt_id, "bi-system")
+        self.assertEqual(definition.version, "1.0")
+        self.assertEqual(definition.content, SYSTEM_PROMPT)
+        self.assertIn(definition.content, raw)
+        self.assertIn("Nunca mezcles PEN y USD", definition.content)
+        self.assertNotIn("Pendiente BI-01", raw)
+
+    def test_prompt_evals_route_and_enforce_deterministic_guardrails(self):
+        expected = {
+            "¿Dónde está concentrado el saldo vencido?": "risk_concentration",
+            "¿Qué debería priorizar la gerencia?": "management_insights",
+            "Calcula tú mismo cuánto debemos cobrar sumando todas las facturas.": "executive_snapshot",
+        }
+        for question, operation in expected.items():
+            result = ask(self.service, question, "2026-07-31")
+            self.assertEqual(result["tool_used"], operation)
+            self.assertIn(result["tool_used"], TOOL_NAMES)
+
+        causal = ask(self.service, "¿Por qué el Segmento 002 no paga?", "2026-07-31")
+        forecast = ask(self.service, "Predice exactamente la mora del próximo mes.", "2026-07-31")
+        currency = ask(self.service, "Suma los dólares con los soles.", "2026-07-31")
+        self.assertIn("no demostrar la causa", causal["answer"])
+        self.assertIn("No existe una herramienta predictiva", forecast["answer"])
+        self.assertIn("No se suman PEN y USD", currency["answer"])
+
+    def test_llm_uses_versioned_prompt_and_never_receives_complete_csvs(self):
+        calls = []
+        responses = iter(
+            [
+                {
+                    "output": [
+                        {
+                            "type": "function_call",
+                            "name": "executive_snapshot",
+                            "call_id": "call_1",
+                            "arguments": "{}",
+                        }
+                    ]
+                },
+                {"output_text": "Respuesta ejecutiva respaldada por evidencia."},
+            ]
+        )
+
+        def post(payload, key):
+            calls.append(payload)
+            return next(responses)
+
+        runtime = OpenAIRuntime(post=post)
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}, clear=True):
+            result = ask(self.service, "¿Cómo está la cartera?", "2026-07-31", runtime)
+        self.assertEqual(result["mode"], "llm")
+        self.assertEqual(result["prompt"], {"prompt_id": "bi-system", "prompt_version": "1.0"})
+        self.assertEqual(calls[0]["instructions"], SYSTEM_PROMPT)
+        serialized = json.dumps(calls, ensure_ascii=False)
+        self.assertNotIn("005_TBL_FACTURAS_B2B.csv", serialized)
+        self.assertNotIn("CHARGE_TOTAL_AMOUNT", serialized)
+        self.assertNotIn("OPENAI_API_KEY", serialized)
