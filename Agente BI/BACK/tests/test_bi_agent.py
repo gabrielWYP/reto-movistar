@@ -718,8 +718,8 @@ class BICoreTests(unittest.TestCase):
 
         self.assertEqual(choice["tool_name"], "executive_snapshot")
         self.assertEqual(post.call_count, 2)
-        self.assertEqual(post.call_args_list[0].args[0]["max_tokens"], 400)
-        self.assertEqual(post.call_args_list[1].args[0]["max_tokens"], 800)
+        self.assertEqual(post.call_args_list[0].args[0]["max_tokens"], 800)
+        self.assertEqual(post.call_args_list[1].args[0]["max_tokens"], 1600)
         self.assertEqual(post.call_args_list[1].args[0]["tool_choice"], "auto")
 
     def test_opencode_http_client_sets_cloudflare_safe_headers(self):
@@ -810,6 +810,42 @@ class BICoreTests(unittest.TestCase):
         runtime = OpenCodeRuntime(post=lambda payload, key: response)
         with patch.dict("os.environ", {"OPENCODE_KEY": "test"}, clear=True):
             runtime.probe()
+
+    def test_opencode_probe_retries_with_a_larger_budget_after_empty_completion(self):
+        responses = [
+            {
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "reasoning_content": "",
+                        },
+                    }
+                ],
+                "usage": {"completion_tokens": 64},
+            },
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": "OK"},
+                    }
+                ],
+                "usage": {"completion_tokens": 120},
+            },
+        ]
+        post = Mock(side_effect=responses)
+        runtime = OpenCodeRuntime(post=post)
+
+        with patch.dict("os.environ", {"OPENCODE_KEY": "test"}, clear=True):
+            runtime.probe()
+
+        self.assertEqual(
+            [call.args[0]["max_tokens"] for call in post.call_args_list],
+            [64, 512],
+        )
 
     def test_opencode_probe_rejects_empty_completion(self):
         response = {
