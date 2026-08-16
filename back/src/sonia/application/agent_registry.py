@@ -14,7 +14,7 @@ _AGENTS: tuple[AgentDescriptor, ...] = (
         agent_id="collections",
         display_name="Cobranzas y conciliación",
         source_branch="Arian",
-        package="sonia.agents.collections",
+        package="collections_agent",
         capabilities=(
             "portfolio_snapshot",
             "customer_snapshot",

@@ -422,7 +422,10 @@ async function refreshStatus() {
     const data = await response.json();
     if (!response.ok) throw new Error();
     const aiBadge = byId("ai-status");
-    aiBadge.textContent = data.openai_enabled ? `IA disponible (${data.model})` : "IA requiere OPENAI_API_KEY";
+    aiBadge.textContent = data.openai_enabled ? "Consultas con IA disponibles" : "Consultas con IA no disponibles";
+    aiBadge.title = data.openai_enabled
+      ? `Modelo configurado: ${data.model}`
+      : "La configuración debe realizarla un administrador.";
     aiBadge.className = `status ${data.openai_enabled ? "ready" : "warn"}`;
     const dataBadge = byId("data-status");
     dataBadge.textContent = data.dataset_configured ? "Dataset listo" : "Carga los CSV para comenzar";

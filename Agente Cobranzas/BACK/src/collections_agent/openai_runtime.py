@@ -114,41 +114,55 @@ def _usage_total(responses: list[dict[str, Any]]) -> dict[str, int]:
     return totals
 
 
-def ask(service: CollectionsService, question: str, model: str | None = None) -> dict[str, Any]:
+def ask(
+    service: CollectionsService,
+    question: str,
+    model: str | None = None,
+    settings: CollectionsSettings | None = None,
+) -> dict[str, Any]:
     """Let the model choose tools while all financial calculations remain local."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "La consulta con IA requiere OPENAI_API_KEY. "
-            "Los análisis determinísticos siguen disponibles sin esa clave."
+            "La consulta con IA no está habilitada en este entorno. "
+            "Los análisis determinísticos siguen disponibles."
         )
     if not question.strip():
         raise ValueError("Escribe una consulta para el agente.")
 
-    settings = CollectionsSettings.from_environment()
-    selected_model = model or settings.model
+    runtime_settings = settings or CollectionsSettings.from_environment()
+    selected_model = model or runtime_settings.model
     client = _client(api_key)
     responses: list[dict[str, Any]] = []
+    conversation: list[dict[str, Any]] = [
+        {"role": "user", "content": question.strip()}
+    ]
     response = _post(
         client,
         {
             "model": selected_model,
             "store": False,
             "instructions": SYSTEM_PROMPT,
-            "input": question,
+            "input": conversation,
             "tools": _schemas(),
             "tool_choice": "auto",
-            "reasoning": {"effort": settings.reasoning_effort},
-            "max_output_tokens": settings.max_output_tokens,
+            "reasoning": {"effort": runtime_settings.reasoning_effort},
+            "max_output_tokens": runtime_settings.max_output_tokens,
         },
     )
     responses.append(response)
     tool_results: list[dict[str, Any]] = []
 
-    for _ in range(settings.max_tool_calls):
+    calls_used = 0
+    for _ in range(runtime_settings.max_tool_calls):
         calls = _function_calls(response)
         if not calls:
             break
+        calls_used += len(calls)
+        if calls_used > runtime_settings.max_tool_calls:
+            raise RuntimeError(
+                "La consulta excede el límite de herramientas; formula una pregunta más específica."
+            )
         outputs: list[dict[str, str]] = []
         for call in calls:
             try:
@@ -164,18 +178,19 @@ def ask(service: CollectionsService, question: str, model: str | None = None) ->
                     "output": json.dumps(result, ensure_ascii=False),
                 }
             )
+        conversation.extend(response.get("output", []))
+        conversation.extend(outputs)
         response = _post(
             client,
             {
                 "model": selected_model,
                 "store": False,
                 "instructions": SYSTEM_PROMPT,
-                "previous_response_id": response["id"],
-                "input": outputs,
+                "input": conversation,
                 "tools": _schemas(),
                 "tool_choice": "auto",
-                "reasoning": {"effort": settings.reasoning_effort},
-                "max_output_tokens": settings.max_output_tokens,
+                "reasoning": {"effort": runtime_settings.reasoning_effort},
+                "max_output_tokens": runtime_settings.max_output_tokens,
             },
         )
         responses.append(response)

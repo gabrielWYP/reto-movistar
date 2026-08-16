@@ -1,4 +1,4 @@
-"""UI-independent application boundary for the integrated collections agent."""
+"""UI-independent application boundary for the collections agent."""
 
 from __future__ import annotations
 
@@ -48,8 +48,12 @@ class CollectionsBackend:
         return self._service is not None
 
     @property
+    def settings(self) -> CollectionsSettings:
+        return self._settings
+
+    @property
     def llm_available(self) -> bool:
-        return bool(os.getenv("OPENAI_API_KEY"))
+        return bool(os.getenv("OPENAI_API_KEY", "").strip())
 
     def dataset_status(self) -> dict[str, Any]:
         service = self._service
@@ -91,4 +95,4 @@ class CollectionsBackend:
         return dispatch(self.service(), operation, arguments)
 
     def query(self, question: str) -> dict[str, Any]:
-        return ask(self.service(), question)
+        return ask(self.service(), question, settings=self._settings)

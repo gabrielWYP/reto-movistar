@@ -17,8 +17,10 @@ COPY back/src ./src
 COPY ["Agente BI/BACK/pyproject.toml", "Agente BI/BACK/README.md", "/opt/bi-agent/"]
 COPY ["Agente BI/BACK/src", "/opt/bi-agent/src"]
 COPY ["Agente BI/BACK/prompts", "/opt/bi-agent/prompts"]
+COPY ["Agente Cobranzas/BACK/pyproject.toml", "Agente Cobranzas/BACK/README.md", "/opt/collections-agent/"]
+COPY ["Agente Cobranzas/BACK/src", "/opt/collections-agent/src"]
 
-RUN pip install --no-cache-dir /opt/bi-agent .
+RUN pip install --no-cache-dir /opt/bi-agent /opt/collections-agent .
 
 USER 1001:1001
 

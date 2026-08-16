@@ -19,6 +19,10 @@ COPY ["Agente BI/BACK/pyproject.toml", "Agente BI/BACK/README.md", "/opt/bi-agen
 COPY ["Agente BI/BACK/src", "/opt/bi-agent/src"]
 COPY ["Agente BI/BACK/prompts", "/opt/bi-agent/prompts"]
 COPY ["Agente BI/FRONT", "/app/front/bi"]
+COPY ["Agente Cobranzas/BACK/pyproject.toml", "Agente Cobranzas/BACK/README.md", "/opt/collections-agent/"]
+COPY ["Agente Cobranzas/BACK/src", "/opt/collections-agent/src"]
+COPY ["Agente Cobranzas/FRONT/index.html", "/app/front/agents/collections/index.html"]
+COPY ["Agente Cobranzas/FRONT/assets", "/app/front/agents/collections/assets"]
 
 RUN asset_version="$(find /app/front/assets /app/front/agents /app/front/bi/assets \
       -type f -print0 \
@@ -31,7 +35,7 @@ RUN asset_version="$(find /app/front/assets /app/front/agents /app/front/bi/asse
       /app/front/agents/collections/config.js \
       /app/front/agents/collections/index.html \
       /app/front/bi/index.html \
-    && pip install --no-cache-dir /opt/bi-agent .
+    && pip install --no-cache-dir /opt/bi-agent /opt/collections-agent .
 
 USER 1001:1001
 

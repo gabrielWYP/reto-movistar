@@ -7,6 +7,8 @@ COPY front/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY front/index.html /usr/share/nginx/html/index.html
 COPY front/assets /usr/share/nginx/html/assets
 COPY front/agents /usr/share/nginx/html/agents
+COPY ["Agente Cobranzas/FRONT/index.html", "/usr/share/nginx/html/agents/collections/index.html"]
+COPY ["Agente Cobranzas/FRONT/assets", "/usr/share/nginx/html/agents/collections/assets"]
 COPY ["Agente BI/FRONT/index.html", "/usr/share/nginx/html/bi/index.html"]
 COPY ["Agente BI/FRONT/assets", "/usr/share/nginx/html/bi/assets"]
 

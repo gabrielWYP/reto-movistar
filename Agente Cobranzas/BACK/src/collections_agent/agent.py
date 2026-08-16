@@ -1,4 +1,4 @@
-"""A thin, token-efficient interface to connect a future GPT-5.6 client to deterministic tools."""
+"""A thin, token-efficient interface connecting OpenAI to deterministic tools."""
 
 from __future__ import annotations
 

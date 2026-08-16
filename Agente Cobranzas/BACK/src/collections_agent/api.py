@@ -1,18 +1,20 @@
-"""FastAPI router for the collections module inside the shared backend."""
+"""FastAPI boundaries for standalone and shared Collections deployments."""
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from .agent import tool_definitions
 from .application import CollectionsBackend
-from .config import CollectionsSettings
+from .config import CollectionsSettings, get_settings
 
 UPLOAD_CHUNK_BYTES = 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 class CollectionsQueryRequest(BaseModel):
@@ -35,7 +37,7 @@ def create_collections_router(backend: CollectionsBackend) -> APIRouter:
 
     @router.get("/status")
     def status() -> dict[str, Any]:
-        settings = CollectionsSettings.from_environment()
+        settings = backend.settings
         return {
             **backend.dataset_status(),
             "openai_enabled": backend.llm_available,
@@ -86,7 +88,7 @@ def create_collections_router(backend: CollectionsBackend) -> APIRouter:
     async def upload_dataset(
         files: Annotated[list[UploadFile], File(...)],
     ) -> dict[str, object]:
-        settings = CollectionsSettings.from_environment()
+        settings = backend.settings
         if not files:
             raise HTTPException(status_code=422, detail="Selecciona al menos un CSV.")
         if len(files) > settings.max_upload_files:
@@ -114,7 +116,15 @@ def create_collections_router(backend: CollectionsBackend) -> APIRouter:
 
         result = backend.upload_dataset(payload)
         if not result["ready_for_analysis"]:
+            logger.warning(
+                "collections_dataset_rejected",
+                extra={"uploaded_files": len(payload), "uploaded_bytes": request_bytes},
+            )
             raise HTTPException(status_code=422, detail=result)
+        logger.info(
+            "collections_dataset_loaded",
+            extra={"uploaded_files": len(payload), "uploaded_bytes": request_bytes},
+        )
         return result
 
     @router.post("/query")
@@ -127,3 +137,29 @@ def create_collections_router(backend: CollectionsBackend) -> APIRouter:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
     return router
+
+
+def create_app(
+    settings: CollectionsSettings | None = None,
+    backend: CollectionsBackend | None = None,
+) -> FastAPI:
+    """Create the independent backend while preserving the shared API contract."""
+    runtime_settings = settings or get_settings()
+    application = FastAPI(
+        title="SON-IA Agente de Cobranzas y Recaudación",
+        version="1.0.0",
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+    )
+    runtime_backend = backend or CollectionsBackend(settings=runtime_settings)
+    application.state.collections_settings = runtime_settings
+    application.include_router(create_collections_router(runtime_backend))
+
+    @application.get("/health", tags=["platform"])
+    def health() -> dict[str, str]:
+        return {"status": "ok", "service": "sonia-collections-back"}
+
+    return application
+
+
+app = create_app()

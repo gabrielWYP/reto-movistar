@@ -1,4 +1,4 @@
-"""Tool service: compact, deterministic results for a UI, Supervisor, or GPT-5.6."""
+"""Tool service: compact, deterministic results for a UI, Supervisor, or OpenAI."""
 
 from __future__ import annotations
 

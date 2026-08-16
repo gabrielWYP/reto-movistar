@@ -3,11 +3,11 @@
 from pathlib import Path
 
 from bi_agent.application import BIBackend
+from collections_agent.application import CollectionsBackend
+from collections_agent.data import SoniaDataset
+from collections_agent.service import CollectionsService
 from fastapi.testclient import TestClient
 
-from sonia.agents.collections.application import CollectionsBackend
-from sonia.agents.collections.data import SoniaDataset
-from sonia.agents.collections.service import CollectionsService
 from sonia.config import Settings
 from sonia.entrypoints.api import create_app
 

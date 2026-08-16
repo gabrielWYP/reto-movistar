@@ -7,12 +7,12 @@ from uuid import uuid4
 
 from bi_agent.api import create_bi_router
 from bi_agent.application import BIBackend
+from collections_agent.api import create_collections_router
+from collections_agent.application import CollectionsBackend
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from sonia.agents.collections.api import create_collections_router
-from sonia.agents.collections.application import CollectionsBackend
 from sonia.application.agent_registry import get_agent, list_agents
 from sonia.application.demo_service import build_demo_scenario, transition_demo
 from sonia.config import Settings, get_settings
