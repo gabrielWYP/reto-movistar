@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-back
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-back
+  template:
+    metadata:
+      labels:
+        app: billing-back
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: api
+          image: ghcr.io/gabrielwyp/sonia-billing-back:replace-with-tag
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: billing-agent-config
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: billing-agent-openai
+                  key: OPENAI_API_KEY
+                  optional: true
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: dataset
+              mountPath: /data
+              readOnly: true
+            - name: temporary
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+      volumes:
+        - name: dataset
+          persistentVolumeClaim:
+            claimName: replace-with-billing-dataset-pvc
+        - name: temporary
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-back
+spec:
+  type: ClusterIP
+  selector:
+    app: billing-back
+  ports:
+    - port: 8080
+      targetPort: 8080
