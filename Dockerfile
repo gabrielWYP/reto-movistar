@@ -24,6 +24,10 @@ COPY ["Agente Cobranzas/BACK/src", "/opt/collections-agent/src"]
 COPY ["Agente Cobranzas/BACK/prompts", "/opt/collections-agent/prompts"]
 COPY ["Agente Cobranzas/FRONT/index.html", "/app/front/agents/collections/index.html"]
 COPY ["Agente Cobranzas/FRONT/assets", "/app/front/agents/collections/assets"]
+COPY ["Agente_Facturacion/BACK/pyproject.toml", "Agente_Facturacion/BACK/README.md", "/opt/billing-agent/"]
+COPY ["Agente_Facturacion/BACK/src", "/opt/billing-agent/src"]
+COPY ["Agente_Facturacion/FRONT/index.html", "/app/front/agents/billing/index.html"]
+COPY ["Agente_Facturacion/FRONT/assets", "/app/front/agents/billing/assets"]
 
 RUN asset_version="$(find /app/front/assets /app/front/agents /app/front/bi/assets \
       -type f -print0 \
@@ -33,10 +37,12 @@ RUN asset_version="$(find /app/front/assets /app/front/agents /app/front/bi/asse
       | cut -c1-12)" \
     && sed -i "s/__ASSET_VERSION__/${asset_version}/g" \
       /app/front/index.html \
+      /app/front/agents/billing/index.html \
+      /app/front/agents/billing/config.js \
       /app/front/agents/collections/config.js \
       /app/front/agents/collections/index.html \
       /app/front/bi/index.html \
-    && pip install --no-cache-dir /opt/bi-agent /opt/collections-agent .
+    && pip install --no-cache-dir /opt/bi-agent /opt/collections-agent /opt/billing-agent .
 
 USER 1001:1001
 

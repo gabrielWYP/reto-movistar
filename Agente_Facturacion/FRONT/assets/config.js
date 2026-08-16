@@ -1,4 +1,5 @@
 window.SONIA_BILLING_UI = Object.freeze({
+  apiBase: window.location.pathname.startsWith("/agents/billing") ? "/api/billing" : "/api",
   demo: Object.freeze({
     customer: "CLIENT_00434",
     account: "993722637",

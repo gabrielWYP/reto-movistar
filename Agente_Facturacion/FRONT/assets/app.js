@@ -13,9 +13,14 @@ const money = value => typeof value === "number" ? new Intl.NumberFormat("es-PE"
 const percent = value => typeof value === "number" ? new Intl.NumberFormat("es-PE", {style:"percent", maximumFractionDigits:1}).format(value) : "—";
 const displayDate = value => value ? String(value).split("-").reverse().join("/") : "—";
 const plantStatusLabel = value => ({Active:"Activa",Activo:"Activa",Inactive:"Inactiva",Inactivo:"Inactiva"}[value] || value);
+const apiBase = String(window.SONIA_BILLING_UI.apiBase || "/api").replace(/\/$/, "");
+
+function apiEndpoint(path) {
+  return path.startsWith("/api/") ? `${apiBase}${path.slice(4)}` : path;
+}
 
 function apiUrl(path, params = {}) {
-  const url = new URL(path, window.location.origin);
+  const url = new URL(apiEndpoint(path), window.location.origin);
   if (state.datasetId) url.searchParams.set("dataset_id", state.datasetId);
   Object.entries(params).forEach(([key,value]) => { if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, value); });
   return url.pathname + url.search;
@@ -33,7 +38,7 @@ function apiError(payload, fallback) {
 }
 
 async function requestJson(url, options) {
-  const response = await fetch(url, options);
+  const response = await fetch(apiEndpoint(url), options);
   const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(apiError(payload, "No se pudo completar la solicitud."));
   return payload;
@@ -176,7 +181,8 @@ async function loadView() {
       const result=await requestJson("/api/conversation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:state.question,dataset_id:state.datasetId,as_of_date:state.asOf,context:state.context})});
       state.context=result.context||{};
       $("#feedback").textContent=`${result.route === "llm" ? "Interpretación asistida" : "Respuesta determinística"} · ${result.tool || result.status}`;
-      $("#content").innerHTML=`<div class="narrative" style="white-space:pre-line">${escapeHtml(result.answer)}</div>${result.agent_response?`<section class="section"><h2>Hallazgos respaldados</h2>${findings(result.agent_response,result.presentation)}</section>`:""}<details><summary>Ver trazabilidad de enrutamiento</summary><pre>${escapeHtml(JSON.stringify(result,null,2))}</pre></details>`;
+      $("#content").innerHTML=`<div id="agent-answer" class="narrative"></div>${result.agent_response?`<section class="section"><h2>Hallazgos respaldados</h2>${findings(result.agent_response,result.presentation)}</section>`:""}<details><summary>Ver trazabilidad de enrutamiento</summary><pre>${escapeHtml(JSON.stringify(result,null,2))}</pre></details>`;
+      window.SoniaMarkdown.render($("#agent-answer"), result.answer);
       return;
     }
     let path="/api/health", params={as_of_date:state.asOf};

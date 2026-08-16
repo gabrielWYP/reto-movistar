@@ -20,8 +20,10 @@ COPY ["Agente BI/BACK/prompts", "/opt/bi-agent/prompts"]
 COPY ["Agente Cobranzas/BACK/pyproject.toml", "Agente Cobranzas/BACK/README.md", "/opt/collections-agent/"]
 COPY ["Agente Cobranzas/BACK/src", "/opt/collections-agent/src"]
 COPY ["Agente Cobranzas/BACK/prompts", "/opt/collections-agent/prompts"]
+COPY ["Agente_Facturacion/BACK/pyproject.toml", "Agente_Facturacion/BACK/README.md", "/opt/billing-agent/"]
+COPY ["Agente_Facturacion/BACK/src", "/opt/billing-agent/src"]
 
-RUN pip install --no-cache-dir /opt/bi-agent /opt/collections-agent .
+RUN pip install --no-cache-dir /opt/bi-agent /opt/collections-agent /opt/billing-agent .
 
 USER 1001:1001
 

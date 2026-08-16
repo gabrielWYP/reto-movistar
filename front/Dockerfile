@@ -9,6 +9,8 @@ COPY front/assets /usr/share/nginx/html/assets
 COPY front/agents /usr/share/nginx/html/agents
 COPY ["Agente Cobranzas/FRONT/index.html", "/usr/share/nginx/html/agents/collections/index.html"]
 COPY ["Agente Cobranzas/FRONT/assets", "/usr/share/nginx/html/agents/collections/assets"]
+COPY ["Agente_Facturacion/FRONT/index.html", "/usr/share/nginx/html/agents/billing/index.html"]
+COPY ["Agente_Facturacion/FRONT/assets", "/usr/share/nginx/html/agents/billing/assets"]
 COPY ["Agente BI/FRONT/index.html", "/usr/share/nginx/html/bi/index.html"]
 COPY ["Agente BI/FRONT/assets", "/usr/share/nginx/html/bi/assets"]
 
@@ -23,6 +25,8 @@ RUN asset_version="$(find /usr/share/nginx/html/assets /usr/share/nginx/html/age
       | cut -c1-12)" \
     && sed -i "s/__ASSET_VERSION__/${asset_version}/g" \
       /usr/share/nginx/html/index.html \
+      /usr/share/nginx/html/agents/billing/index.html \
+      /usr/share/nginx/html/agents/billing/config.js \
       /usr/share/nginx/html/agents/collections/config.js \
       /usr/share/nginx/html/agents/collections/index.html \
       /usr/share/nginx/html/bi/index.html
