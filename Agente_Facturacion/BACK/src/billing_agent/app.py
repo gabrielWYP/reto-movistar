@@ -10,12 +10,12 @@ from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from .config import Settings
-from .data import DatasetValidationError
-from .datasets import DatasetRegistry
-from .openai_runtime import OpenCodeRuntime
+from .openai_runtime import OpenAIRuntime
 from .presentation import presentation_for
 from .runtime import BillingAgentRuntime, SessionContext
+from .config import Settings
+from .datasets import DatasetRegistry
+from .data import DatasetValidationError
 
 LOG = logging.getLogger("sonia.billing")
 
@@ -61,14 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.get("/api/status", tags=["billing"])
     async def status(dataset_id: str | None = None) -> dict[str, Any]:
         record = registry.resolve(dataset_id)
-        runtime = OpenCodeRuntime()
-        return {
-            "status": "ok",
-            "agent": "billing",
-            "llm_available": runtime.available,
-            "llm": runtime.metadata(),
-            **record.public_status(),
-        }
+        return {"status": "ok", "agent": "billing", "llm_available": OpenAIRuntime().available, **record.public_status()}
 
     def response(record: Any, payload: dict[str, Any]) -> dict[str, Any]:
         return {"dataset_id": record.dataset_id, "agent_response": payload, "presentation": presentation_for(payload)}
@@ -107,9 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             invoice_id=body.context.invoice_id,
             last_tool=body.context.last_tool,
         )
-        result = BillingAgentRuntime(record.service, OpenCodeRuntime()).ask(
-            body.question, context, body.as_of_date
-        )
+        result = BillingAgentRuntime(record.service, OpenAIRuntime()).ask(body.question, context, body.as_of_date)
         result["dataset_id"] = record.dataset_id
         if result.get("agent_response"):
             result["presentation"] = presentation_for(result["agent_response"])
