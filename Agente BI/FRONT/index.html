@@ -6,6 +6,7 @@
     <meta name="description" content="SON-IA Business Intelligence Agent" />
     <title>SON-IA · Business Intelligence</title>
     <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__" />
+    <script src="/assets/safe-markdown.js?v=__ASSET_VERSION__" defer></script>
     <script src="assets/app.js?v=__ASSET_VERSION__" defer></script>
   </head>
   <body>
@@ -63,7 +64,7 @@
       <section id="result" class="result" hidden aria-live="polite">
         <article class="answer-card">
           <div class="analysis-meta"><span id="analysis-title"></span><span id="analysis-date"></span></div>
-          <p id="answer"></p>
+          <div id="answer" class="agent-markdown"></div>
           <div class="execution-origin">
             <span id="ai-badge" class="ai-badge" hidden>✦ Hecho con IA</span>
             <small id="execution-mode"></small>

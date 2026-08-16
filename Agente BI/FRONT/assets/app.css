@@ -56,7 +56,12 @@ form button:disabled { opacity: .55; cursor: wait; }
 .answer-card { padding: 28px; border-left: 5px solid var(--blue); }
 .analysis-meta span:first-child { font-weight: 800; color: var(--navy); }
 .analysis-meta span:last-child, .answer-card small { color: var(--muted); }
-.answer-card > p { font-size: 19px; line-height: 1.65; }
+.answer-card > .agent-markdown { font-size: 19px; line-height: 1.65; }
+.agent-markdown > :first-child { margin-top: 0; }
+.agent-markdown > :last-child { margin-bottom: 0; }
+.agent-markdown ul, .agent-markdown ol { margin: 10px 0; padding-left: 24px; }
+.agent-markdown li + li { margin-top: 7px; }
+.agent-markdown code { padding: 2px 5px; border-radius: 5px; background: #edf4f8; font-size: .9em; }
 .execution-origin { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .ai-badge { display: inline-flex; align-items: center; padding: 6px 10px; border: 1px solid #9edfcf; border-radius: 999px; background: #e7f7f2; color: var(--green); font-size: 12px; font-weight: 800; letter-spacing: .02em; }
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(205px, 1fr)); gap: 14px; margin-top: 16px; }

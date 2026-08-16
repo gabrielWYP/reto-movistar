@@ -91,7 +91,10 @@ function renderResult(payload) {
   const analysis = view.analysis || {};
   byId("analysis-title").textContent = analysis.title || TOOL_LABELS[payload.tool_used] || "Análisis BI";
   byId("analysis-date").textContent = `Corte: ${analysis.as_of_date || payload.agent_response?.as_of_date || "—"}`;
-  byId("answer").textContent = payload.answer || "Resultado disponible en la evidencia.";
+  window.SoniaMarkdown.render(
+    byId("answer"),
+    payload.answer || "Resultado disponible en la evidencia.",
+  );
   const aiGenerated = payload.mode === "llm";
   byId("ai-badge").hidden = !aiGenerated;
   byId("execution-mode").textContent = aiGenerated

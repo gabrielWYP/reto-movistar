@@ -491,7 +491,7 @@ async function askAgent() {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(errorMessage(data, "No se pudo completar la consulta con IA."));
-    answer.textContent = data.answer || "La IA no devolvió una respuesta.";
+    window.SoniaMarkdown.render(answer, data.answer || "La IA no devolvió una respuesta.");
     const aiGenerated = data.mode === "llm";
     aiBadge.hidden = !aiGenerated;
     answerMode.textContent = aiGenerated

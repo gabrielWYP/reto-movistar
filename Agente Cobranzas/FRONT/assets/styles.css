@@ -66,7 +66,12 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px 
 .notice, .answer { margin: 18px 0; padding: 12px 14px; background: var(--soft-blue); border: 1px solid #d3ebfa; border-left: 4px solid var(--blue); border-radius: 7px; }
 .notice.error, .answer.error { background: #fff0f1; border-left-color: var(--red); }
 .notice.success { background: #edf9f4; border-left-color: var(--green); }
-.answer { white-space: pre-wrap; }
+.answer { white-space: normal; }
+.agent-markdown > :first-child { margin-top: 0; }
+.agent-markdown > :last-child { margin-bottom: 0; }
+.agent-markdown ul, .agent-markdown ol { margin: 10px 0; padding-left: 24px; }
+.agent-markdown li + li { margin-top: 6px; }
+.agent-markdown code { padding: 2px 5px; border-radius: 5px; background: #e8f1f7; font-size: .9em; }
 .answer-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; color: var(--muted); }
 .ai-generated { display: inline-block; padding: 4px 10px; color: #075d45; background: #dff7ed; border: 1px solid #a6dfca; border-radius: 99px; font-size: 12px; font-weight: 800; }
 .ai-generated[hidden] { display: none; }
