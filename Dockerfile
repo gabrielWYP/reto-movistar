@@ -15,8 +15,21 @@ RUN groupadd --gid 1001 sonia \
 COPY back/pyproject.toml back/README.md LICENSE ./
 COPY back/src ./src
 COPY front ./front
+COPY ["Agente BI/BACK/pyproject.toml", "Agente BI/BACK/README.md", "/opt/bi-agent/"]
+COPY ["Agente BI/BACK/src", "/opt/bi-agent/src"]
+COPY ["Agente BI/BACK/prompts", "/opt/bi-agent/prompts"]
+COPY ["Agente BI/FRONT", "/app/front/bi"]
 
-RUN pip install --no-cache-dir .
+RUN asset_version="$(find /app/front/assets /app/front/agents /app/front/bi/assets \
+      -type f -print0 \
+      | sort -z \
+      | xargs -0 sha256sum \
+      | sha256sum \
+      | cut -c1-12)" \
+    && sed -i "s/__ASSET_VERSION__/${asset_version}/g" \
+      /app/front/index.html \
+      /app/front/bi/index.html \
+    && pip install --no-cache-dir /opt/bi-agent .
 
 USER 1001:1001
 

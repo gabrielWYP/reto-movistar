@@ -4,7 +4,7 @@
 |---|---|---|---|
 | `billing` | `camila` | `sonia.agents.billing` | `front/agents/billing` |
 | `collections` | `Arian` | `sonia.agents.collections` | `front/agents/collections` |
-| `bi` | `Mauricio` | `sonia.agents.bi` | `front/agents/bi` |
+| `bi` | `Mauricio` | `bi_agent` | `Agente BI/FRONT` |
 
 Los paquetes comparten el proceso FastAPI y deben usar imports relativos dentro
 de su límite. Los contratos públicos se incorporan mediante la capa

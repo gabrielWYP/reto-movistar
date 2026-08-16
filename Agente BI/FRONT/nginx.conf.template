@@ -17,6 +17,14 @@ server {
         proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT}/health;
     }
 
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
     location / {
         add_header Cache-Control "no-cache, no-store, must-revalidate" always;
         try_files $uri $uri/ /index.html;

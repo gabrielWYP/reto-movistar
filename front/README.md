@@ -4,6 +4,10 @@ SPA estática, sin toolchain Node, publicada por Nginx en el pod `front`. Nginx
 mantiene el punto único de entrada: sirve la interfaz y enruta `/api/*` y
 `/health` al servicio `back`.
 
+La misma imagen copia el frontend especializado de BI y lo sirve bajo `/bi/`.
+El resto de los fronts puede incorporarse con el mismo patrón, sin exponer
+puertos ni Services adicionales.
+
 Variables del contenedor:
 
 - `BACKEND_HOST`: nombre DNS del Service backend; por defecto `back`.

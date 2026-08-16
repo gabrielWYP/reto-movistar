@@ -1,4 +1,11 @@
-# Contrato de despliegue del Agente BI
+# Referencia standalone del Agente BI
+
+> No aplicar estos manifiestos al despliegue integrado de SON-IA. Crearían pods
+> `bi-back` y `bi-front` adicionales y violarían el contrato de dos contenedores.
+
+Producción debe usar los `back/Dockerfile` y `front/Dockerfile` del repositorio.
+El primero instala `bi_agent`; el segundo sirve BI bajo `/bi/`. El dataset se
+carga por HTTP y permanece únicamente en la memoria del contenedor `back`.
 
 Los manifiestos de `kubernetes/` son una referencia standalone de dos pods:
 
@@ -9,21 +16,11 @@ Ingress externo → bi-front (Nginx) → /api/* → bi-back (FastAPI)
 No deben aplicarse sin adaptar imágenes, namespace y almacenamiento al entorno
 del equipo. Este directorio no modifica ni sustituye `gabrielWYP/K3S_Infra`.
 
-## Contrato del dataset
+## Contrato del dataset en memoria
 
-El contenedor BACK necesita:
-
-```text
-SONIA_BI_DATASET_PATH=/data/bi
-```
-
-y que en esa ruta estén disponibles, con permisos de solo lectura, los seis CSV
-oficiales o el ZIP del reto. El origen definitivo no está decidido: puede ser
-PVC, `hostPath`, object storage con init container u otro mecanismo acordado.
-
-`back.yaml` usa deliberadamente el placeholder
-`replace-with-bi-dataset-pvc`. Debe reemplazarse o parchearse antes de desplegar;
-no representa una decisión de almacenamiento.
+No requiere PVC, `hostPath` ni object storage. `POST /api/bi/dataset` recibe los
+seis CSV o un ZIP, aplica límites de tamaño y conserva el contenido en RAM. Un
+reinicio o rollout elimina el dataset y obliga a cargarlo nuevamente.
 
 La clave OpenAI es opcional. Si se usa, debe proceder de un Secret llamado
 `bi-agent-openai`; nunca de ConfigMap, imagen, frontend o Git.

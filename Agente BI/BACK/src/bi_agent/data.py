@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import io
 import zipfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,7 @@ TABLE_FILES = {
     "invoices": "005_TBL_FACTURAS_B2B.csv",
     "credit_notes": "006_TBL_NOTAS_CREDITO_B2B.csv",
 }
+MAX_UNCOMPRESSED_DATASET_BYTES = 50 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,33 +45,89 @@ def _decode_csv(content: bytes) -> list[dict[str, str]]:
     raise ValueError("No se pudo decodificar un CSV del dataset")
 
 
-def _read_zip(path: Path) -> dict[str, list[dict[str, str]]]:
-    with zipfile.ZipFile(path) as outer:
+def _matching_zip_entry(archive: zipfile.ZipFile, filename: str) -> zipfile.ZipInfo:
+    match = next(
+        (item for item in archive.infolist() if Path(item.filename).name == filename),
+        None,
+    )
+    if match is None:
+        raise ValueError(f"El ZIP no contiene {filename}.")
+    return match
+
+
+def _bounded_zip_read(archive: zipfile.ZipFile, entry: zipfile.ZipInfo) -> bytes:
+    if entry.file_size > MAX_UNCOMPRESSED_DATASET_BYTES:
+        raise ValueError("El dataset descomprimido excede 50 MiB.")
+    return archive.read(entry)
+
+
+def _extract_zip_files(content: bytes) -> dict[str, bytes]:
+    with zipfile.ZipFile(io.BytesIO(content)) as outer:
         nested_name = next(
             (name for name in outer.namelist() if name.lower().endswith(".zip")), None
         )
-        nested = zipfile.ZipFile(io.BytesIO(outer.read(nested_name))) if nested_name else outer
+        if nested_name:
+            nested_info = outer.getinfo(nested_name)
+            nested = zipfile.ZipFile(io.BytesIO(_bounded_zip_read(outer, nested_info)))
+        else:
+            nested = outer
         try:
+            entries = {
+                filename: _matching_zip_entry(nested, filename) for filename in TABLE_FILES.values()
+            }
+            total_size = sum(entry.file_size for entry in entries.values())
+            if total_size > MAX_UNCOMPRESSED_DATASET_BYTES:
+                raise ValueError("El dataset descomprimido excede 50 MiB.")
             return {
-                logical: _decode_csv(
-                    nested.read(next(name for name in nested.namelist() if name.endswith(filename)))
-                )
-                for logical, filename in TABLE_FILES.items()
+                filename: _bounded_zip_read(nested, entry) for filename, entry in entries.items()
             }
         finally:
             if nested is not outer:
                 nested.close()
 
 
-def load_dataset(path: Path) -> SoniaDataset:
+def normalize_dataset_files(files: Mapping[str, bytes]) -> dict[str, bytes]:
+    """Validate uploaded names and expand a single ZIP into canonical CSV entries."""
+    normalized = {Path(name).name: content for name, content in files.items()}
+    zip_names = [name for name in normalized if name.lower().endswith(".zip")]
+    if zip_names:
+        if len(normalized) != 1:
+            raise ValueError("Carga el ZIP solo, sin mezclarlo con archivos CSV.")
+        try:
+            return _extract_zip_files(normalized[zip_names[0]])
+        except zipfile.BadZipFile as error:
+            raise ValueError("El archivo ZIP no es válido.") from error
+
+    unknown = sorted(set(normalized) - set(TABLE_FILES.values()))
+    if unknown:
+        raise ValueError(f"Archivos no reconocidos: {', '.join(unknown)}.")
+    return normalized
+
+
+def missing_dataset_files(files: Mapping[str, bytes]) -> list[str]:
+    """Return the official table names not present in an in-memory upload."""
+    return sorted(set(TABLE_FILES.values()) - set(files))
+
+
+def _load_memory_dataset(files: Mapping[str, bytes]) -> SoniaDataset:
+    missing = missing_dataset_files(files)
+    if missing:
+        raise ValueError(f"Faltan archivos del dataset: {', '.join(missing)}.")
+    contents = {logical: _decode_csv(files[filename]) for logical, filename in TABLE_FILES.items()}
+    return SoniaDataset(**contents)
+
+
+def load_dataset(source: Path | Mapping[str, bytes]) -> SoniaDataset:
     """Load an official CSV directory, DATASET.zip, or outer SONIA ZIP container."""
-    if path.is_dir():
+    if not isinstance(source, Path):
+        return _load_memory_dataset(normalize_dataset_files(source))
+    if source.is_dir():
         contents = {
-            logical: _decode_csv((path / filename).read_bytes())
+            logical: _decode_csv((source / filename).read_bytes())
             for logical, filename in TABLE_FILES.items()
         }
-    elif path.suffix.lower() == ".zip":
-        contents = _read_zip(path)
+    elif source.suffix.lower() == ".zip":
+        return _load_memory_dataset(_extract_zip_files(source.read_bytes()))
     else:
         raise ValueError("dataset debe ser un directorio con los 6 CSV o un archivo .zip")
     return SoniaDataset(**contents)

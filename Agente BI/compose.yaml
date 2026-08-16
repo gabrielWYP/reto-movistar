@@ -4,17 +4,11 @@ services:
       context: .
       dockerfile: BACK/Dockerfile
     environment:
-      SONIA_BI_DATASET_PATH: /data/bi
       SONIA_HOST: 0.0.0.0
       SONIA_PORT: "8080"
       SONIA_LOG_LEVEL: INFO
       SONIA_BI_MODEL: ${SONIA_BI_MODEL:-gpt-5.6-terra}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    volumes:
-      - type: bind
-        source: ${SONIA_BI_DATASET_SOURCE:-./DATASET}
-        target: /data/bi
-        read_only: true
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m

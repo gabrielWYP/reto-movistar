@@ -13,7 +13,7 @@ Negocio.
 ## Principios
 
 - Una sola entrada pública y un monolito modular para el MVP.
-- Dos pods: cliente estático `front` y API modular `back`.
+- Dos contenedores: todos los fronts en `front` y todos los backends en `back`.
 - Aprobación humana antes de acciones financieras.
 - Reglas deterministas para cálculos y conciliaciones.
 - IA con salidas estructuradas, evidencia y trazabilidad.
@@ -36,10 +36,13 @@ front/
 ├── assets/
 └── Dockerfile
 back/
-├── src/sonia/agents/{billing,collections,bi}/
+├── src/sonia/agents/{billing,collections}/
 ├── tests/
 ├── Dockerfile
 └── pyproject.toml
+Agente BI/
+├── BACK/src/bi_agent/
+└── FRONT/
 ```
 
 El Ingress publica solo `front`; Nginx enruta `/api/*` y `/health` al Service
@@ -58,16 +61,22 @@ Abrir `http://localhost:8080`. Para detener el entorno:
 docker compose down --volumes
 ```
 
+El centro de operaciones sirve el front BI en `http://localhost:8080/bi/` y el
+backend compartido publica sus contratos en `/api/bi/*`. El dataset se carga
+desde esa interfaz o mediante `POST /api/bi/dataset`; permanece en RAM dentro
+del contenedor `back` y se pierde al reiniciar el pod.
+
 ## Ejecutar solo el backend
 
 ```bash
 cd back
 python -m venv .venv
+.venv/bin/pip install -e '../Agente BI/BACK[dev]'
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/python -m sonia
 ```
 
-Los contratos operativos están disponibles en `GET /health` y
-`GET /api/agents`. Producción publica imágenes independientes desde
+Los contratos operativos están disponibles en `GET /health`, `GET /api/agents`
+y `GET /api/bi/status`. Producción publica las dos imágenes compartidas desde
 `front/Dockerfile` y `back/Dockerfile`; el `Dockerfile` raíz se conserva
 solo para compatibilidad local.

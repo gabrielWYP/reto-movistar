@@ -5,6 +5,8 @@ from collections.abc import Awaitable, Callable
 from time import perf_counter
 from uuid import uuid4
 
+from bi_agent.api import create_bi_router
+from bi_agent.application import BIBackend
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -20,7 +22,10 @@ from sonia.observability.logging import configure_logging
 logger = logging.getLogger(__name__)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    bi_backend: BIBackend | None = None,
+) -> FastAPI:
     """Create an application instance with explicit runtime dependencies."""
     runtime_settings = settings or get_settings()
     configure_logging(runtime_settings.log_level)
@@ -31,6 +36,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
+    runtime_bi_backend = bi_backend or BIBackend()
+    application.include_router(create_bi_router(runtime_bi_backend))
 
     @application.middleware("http")
     async def request_observability(
@@ -111,6 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     assets_dir = runtime_settings.frontend_dir / "assets"
     agent_assets_dir = runtime_settings.frontend_dir / "agents"
+    bi_frontend_dir = runtime_settings.frontend_dir / "bi"
     index_file = runtime_settings.frontend_dir / "index.html"
     if assets_dir.is_dir():
         application.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
@@ -119,6 +127,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "/agents",
             StaticFiles(directory=agent_assets_dir),
             name="agent-assets",
+        )
+    if bi_frontend_dir.is_dir():
+        application.mount(
+            "/bi",
+            StaticFiles(directory=bi_frontend_dir, html=True),
+            name="bi-frontend",
         )
 
     @application.get("/", include_in_schema=False)

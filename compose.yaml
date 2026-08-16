@@ -6,6 +6,8 @@ services:
     environment:
       SONIA_ENVIRONMENT: local
       SONIA_LOG_LEVEL: INFO
+      SONIA_BI_MODEL: ${SONIA_BI_MODEL:-gpt-5.6-terra}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     read_only: true
     restart: unless-stopped
     tmpfs:

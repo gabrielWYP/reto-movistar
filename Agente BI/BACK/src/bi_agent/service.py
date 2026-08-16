@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -38,9 +39,11 @@ def _severity_for_share(share: Decimal) -> str:
 
 class BIService:
     def __init__(
-        self, dataset_path: Path, collections_response: dict[str, Any] | None = None
+        self,
+        dataset_source: Path | Mapping[str, bytes],
+        collections_response: dict[str, Any] | None = None,
     ) -> None:
-        self.model: CanonicalRevenueModel = build_canonical_model(load_dataset(dataset_path))
+        self.model: CanonicalRevenueModel = build_canonical_model(load_dataset(dataset_source))
         self.collections_upstream = (
             collections_response_metadata(collections_response) if collections_response else None
         )

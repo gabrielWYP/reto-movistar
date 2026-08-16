@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from threading import Lock
 from typing import Any
 
 from .agent import ask, dispatch, validate_arguments
+from .data import missing_dataset_files, normalize_dataset_files
 from .llm_runtime import OpenAIRuntime
 from .presentation import presentation_for
 from .prompting import prompt_metadata
@@ -19,36 +19,73 @@ class BIBackend:
 
     def __init__(
         self,
-        dataset_path: Path | None = None,
         *,
         service: BIService | None = None,
         runtime: OpenAIRuntime | None = None,
     ) -> None:
-        self._dataset_path = dataset_path
         self._service = service
+        self._dataset_files: dict[str, bytes] = {}
+        self._dataset_bytes = 0
+        self._dataset_source = "injected" if service is not None else None
         self._runtime = runtime or OpenAIRuntime()
         self._service_lock = Lock()
 
     @property
     def configured(self) -> bool:
         """Report availability without loading the potentially large dataset."""
-        return self._service is not None or bool(self._dataset_path and self._dataset_path.exists())
+        return self._service is not None
 
     @property
     def llm_available(self) -> bool:
         return self._runtime.available
 
+    def dataset_status(self) -> dict[str, Any]:
+        """Return non-sensitive metadata for the process-local dataset."""
+        missing = missing_dataset_files(self._dataset_files) if not self.configured else []
+        if self.configured:
+            status = "ready"
+        elif self._dataset_files:
+            status = "dataset_incomplete"
+        else:
+            status = "dataset_not_configured"
+        return {
+            "status": status,
+            "dataset_configured": self.configured,
+            "dataset_source": self._dataset_source,
+            "dataset_file_count": len(self._dataset_files),
+            "dataset_bytes": self._dataset_bytes,
+            "missing_files": missing,
+        }
+
+    def upload_dataset(self, files: dict[str, bytes], max_bytes: int) -> dict[str, Any]:
+        """Merge uploaded CSVs in memory and atomically rebuild when complete."""
+        incoming = normalize_dataset_files(files)
+        with self._service_lock:
+            candidate = {**self._dataset_files, **incoming}
+            total_bytes = sum(len(content) for content in candidate.values())
+            if total_bytes > max_bytes:
+                raise ValueError("El dataset en memoria excede el límite de 25 MiB.")
+            missing = missing_dataset_files(candidate)
+            if missing:
+                self._dataset_files = candidate
+                self._dataset_bytes = total_bytes
+                self._dataset_source = "memory"
+                return self.dataset_status()
+
+            service = BIService(candidate)
+            self._dataset_files = candidate
+            self._dataset_bytes = total_bytes
+            self._dataset_source = "memory"
+            self._service = service
+            return self.dataset_status()
+
     def service(self) -> BIService:
         """Lazily build the deterministic service once for the backend process."""
         if self._service is None:
-            with self._service_lock:
-                if self._service is None:
-                    if not self._dataset_path or not self._dataset_path.exists():
-                        raise RuntimeError(
-                            "Dataset BI no configurado; define SONIA_BI_DATASET_PATH "
-                            "con un directorio de seis CSV o un ZIP oficial."
-                        )
-                    self._service = BIService(self._dataset_path)
+            raise RuntimeError(
+                "Dataset BI no configurado; carga los seis CSV o un ZIP "
+                "mediante POST /api/bi/dataset."
+            )
         return self._service
 
     @staticmethod

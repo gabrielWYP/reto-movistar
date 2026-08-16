@@ -31,9 +31,6 @@ spec:
           ports:
             - containerPort: 8080
           volumeMounts:
-            - name: dataset
-              mountPath: /data/bi
-              readOnly: true
             - name: temporary
               mountPath: /tmp
           securityContext:
@@ -63,9 +60,6 @@ spec:
               path: /health
               port: 8080
       volumes:
-        - name: dataset
-          persistentVolumeClaim:
-            claimName: replace-with-bi-dataset-pvc
         - name: temporary
           emptyDir: {}
 ---

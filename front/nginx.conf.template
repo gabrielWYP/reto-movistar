@@ -31,6 +31,23 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }
 
+    location = /bi {
+        return 308 /bi/;
+    }
+
+    location = /bi/index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    }
+
+    location /bi/assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    location /bi/ {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        try_files $uri $uri/ /bi/index.html;
+    }
+
     location / {
         add_header Cache-Control "no-cache, no-store, must-revalidate" always;
         try_files $uri $uri/ /index.html;

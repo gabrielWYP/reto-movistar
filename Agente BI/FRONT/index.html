@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="SON-IA Business Intelligence Agent" />
     <title>SON-IA · Business Intelligence</title>
-    <link rel="stylesheet" href="/assets/app.css" />
-    <script src="/assets/app.js" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=__ASSET_VERSION__" />
+    <script src="assets/app.js?v=__ASSET_VERSION__" defer></script>
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/" aria-label="SON-IA Business Intelligence">
+      <a class="brand" href="/" aria-label="Volver al centro de operaciones SON-IA">
         <span class="brand-mark">S</span>
         <span><strong>SON-IA</strong><small>Business Intelligence</small></span>
       </a>
@@ -28,6 +28,24 @@
           <strong>Cálculos verificables</strong>
           <span>Python calcula. La IA selecciona e interpreta.</span>
         </div>
+      </section>
+
+      <section class="dataset-panel" aria-labelledby="dataset-title">
+        <div>
+          <p class="eyebrow">Dataset efímero</p>
+          <h2 id="dataset-title">Carga los seis CSV o un ZIP</h2>
+          <p id="dataset-summary">Los archivos se conservan solo en la memoria del backend.</p>
+        </div>
+        <label class="dataset-picker">
+          <span>Seleccionar archivos</span>
+          <input
+            id="dataset-files"
+            type="file"
+            accept="text/csv,application/zip"
+            multiple
+          />
+        </label>
+        <button id="upload-dataset" type="button">Cargar dataset</button>
       </section>
 
       <section class="query-panel" aria-labelledby="query-title">

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import copy
 import csv
+import io
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -560,6 +562,82 @@ class BICoreTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             backend.query("¿Cómo está la cartera?", "2026-07-31")
 
+    def test_dataset_upload_accumulates_csvs_in_memory_and_enables_queries(self):
+        backend = BIBackend()
+        application = FastAPI()
+        application.include_router(create_bi_router(backend))
+        paths = sorted(self.dataset.glob("*.csv"))
+        first_upload = [
+            ("files", (paths[0].name, paths[0].read_bytes(), "text/csv")),
+        ]
+        remaining_upload = [
+            ("files", (path.name, path.read_bytes(), "text/csv")) for path in paths[1:]
+        ]
+
+        with TestClient(application) as client:
+            partial = client.post("/api/bi/dataset", files=first_upload)
+            complete = client.post("/api/bi/dataset", files=remaining_upload)
+            query = client.post(
+                "/api/bi/query",
+                json={
+                    "question": "¿Cómo está el ciclo de ingresos?",
+                    "as_of_date": "2026-07-31",
+                },
+            )
+
+        self.assertEqual(partial.status_code, 200)
+        self.assertEqual(partial.json()["status"], "dataset_incomplete")
+        self.assertEqual(partial.json()["dataset_file_count"], 1)
+        self.assertEqual(complete.status_code, 200)
+        self.assertEqual(complete.json()["status"], "ready")
+        self.assertEqual(complete.json()["dataset_source"], "memory")
+        self.assertEqual(complete.json()["dataset_file_count"], 6)
+        self.assertGreater(complete.json()["dataset_bytes"], 0)
+        self.assertEqual(complete.json()["missing_files"], [])
+        self.assertEqual(query.status_code, 200)
+        self.assertEqual(query.json()["tool_used"], "executive_snapshot")
+
+    def test_dataset_upload_rejects_unknown_files_without_replacing_service(self):
+        backend = BIBackend(service=self.service)
+        application = FastAPI()
+        application.include_router(create_bi_router(backend))
+        with TestClient(application) as client:
+            response = client.post(
+                "/api/bi/dataset",
+                files={"files": ("unknown.csv", b"a|b\n1|2", "text/csv")},
+            )
+            query = client.post(
+                "/api/bi/query",
+                json={"question": "estado", "as_of_date": "2026-07-31"},
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(query.status_code, 200)
+
+    def test_dataset_zip_upload_stays_in_memory_and_enables_queries(self):
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as target:
+            for path in sorted(self.dataset.glob("*.csv")):
+                target.writestr(path.name, path.read_bytes())
+
+        application = FastAPI()
+        application.include_router(create_bi_router(BIBackend()))
+        with TestClient(application) as client:
+            response = client.post(
+                "/api/bi/dataset",
+                files={"files": ("dataset.zip", archive.getvalue(), "application/zip")},
+            )
+            query = client.post(
+                "/api/bi/query",
+                json={"question": "estado", "as_of_date": "2026-07-31"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ready")
+        self.assertEqual(response.json()["dataset_source"], "memory")
+        self.assertEqual(response.json()["dataset_file_count"], 6)
+        self.assertEqual(query.status_code, 200)
+
     def test_openai_runtime_is_mockable_and_requires_exactly_one_function_call(self):
         response = {
             "output": [
@@ -639,7 +717,7 @@ class BICoreTests(unittest.TestCase):
         self.assertEqual(deterministic, llm_mode)
 
     def test_standalone_fastapi_health_and_shared_contract(self):
-        settings = Settings("0.0.0.0", 8080, "INFO", None)
+        settings = Settings("0.0.0.0", 8080, "INFO")
         application = create_app(settings, BIBackend(service=self.service))
         with TestClient(application) as client:
             health = client.get("/health")

@@ -7,15 +7,22 @@ consumed by the shared frontend.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
-from typing import Any
+from pathlib import Path
+from typing import Annotated, Any
 
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
+from fastapi import status as http_status
 from pydantic import BaseModel, ConfigDict, Field
 
 from .agent import TOOL_NAMES
 from .application import BIBackend
 from .config import Settings, get_settings
+
+MAX_DATASET_UPLOAD_BYTES = 25 * 1024 * 1024
+UPLOAD_CHUNK_BYTES = 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 class BIQueryRequest(BaseModel):
@@ -43,11 +50,46 @@ def create_bi_router(backend: BIBackend) -> APIRouter:
     @router.get("/status")
     def status() -> dict[str, Any]:
         return {
-            "status": "ready" if backend.configured else "dataset_not_configured",
-            "dataset_configured": backend.configured,
+            **backend.dataset_status(),
             "llm_available": backend.llm_available,
             "tools": sorted(TOOL_NAMES),
         }
+
+    @router.post("/dataset", status_code=http_status.HTTP_200_OK)
+    async def upload_dataset(
+        files: Annotated[list[UploadFile], File(...)],
+    ) -> dict[str, Any]:
+        if not files:
+            raise HTTPException(status_code=422, detail="Selecciona al menos un CSV o ZIP.")
+        payload: dict[str, bytes] = {}
+        request_bytes = 0
+        for upload in files:
+            filename = Path(upload.filename or "").name
+            if not filename or Path(filename).suffix.lower() not in {".csv", ".zip"}:
+                raise HTTPException(status_code=422, detail="Solo se aceptan archivos CSV o ZIP.")
+            if filename in payload:
+                raise HTTPException(status_code=422, detail=f"Archivo duplicado: {filename}.")
+            chunks: list[bytes] = []
+            while chunk := await upload.read(UPLOAD_CHUNK_BYTES):
+                request_bytes += len(chunk)
+                if request_bytes > MAX_DATASET_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="La carga excede 25 MiB.")
+                chunks.append(chunk)
+            payload[filename] = b"".join(chunks)
+        try:
+            result = backend.upload_dataset(payload, MAX_DATASET_UPLOAD_BYTES)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        logger.info(
+            "bi_dataset_uploaded",
+            extra={
+                "uploaded_file_count": len(payload),
+                "uploaded_bytes": request_bytes,
+                "dataset_status": result["status"],
+                "dataset_bytes": result["dataset_bytes"],
+            },
+        )
+        return result
 
     @router.post("/query")
     def query(request: BIQueryRequest) -> dict[str, Any]:
@@ -88,7 +130,8 @@ def create_app(
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
-    runtime_backend = backend or BIBackend(dataset_path=runtime_settings.dataset_path)
+    application.state.bi_settings = runtime_settings
+    runtime_backend = backend or BIBackend()
     application.include_router(create_bi_router(runtime_backend))
 
     @application.get("/health", tags=["platform"])
