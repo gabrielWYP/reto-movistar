@@ -72,13 +72,32 @@ class OpenCodeRuntime:
 
     @staticmethod
     def _http_error_detail(error: HTTPError) -> str | None:
-        """Extract a non-sensitive Cloudflare code from an HTTP error body."""
+        """Extract an allow-listed, non-sensitive detail from an HTTP error body."""
         try:
             body = error.read(2048).decode("utf-8", errors="replace")
         except (AttributeError, OSError, ValueError):
             return None
         match = re.search(r"\berror code:\s*(\d{3,5})\b", body, flags=re.IGNORECASE)
-        return f"Cloudflare error {match.group(1)}" if match else None
+        if match:
+            return f"Cloudflare error {match.group(1)}"
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return None
+        provider_error = payload.get("error") if isinstance(payload, dict) else None
+        if not isinstance(provider_error, dict):
+            return None
+        message = provider_error.get("message")
+        thinking_tool_choice_error = (
+            isinstance(message, str)
+            and "thinking mode does not support this tool_choice" in message.lower()
+        )
+        if thinking_tool_choice_error:
+            return "Provider incompatibility: thinking mode/tool_choice"
+        code = provider_error.get("code")
+        if isinstance(code, str) and re.fullmatch(r"[a-z0-9_-]{1,64}", code):
+            return f"Provider error {code}"
+        return None
 
     @staticmethod
     def _usage(response: dict[str, Any]) -> dict[str, int]:
@@ -159,7 +178,7 @@ class OpenCodeRuntime:
                     },
                 ],
                 "tools": self._chat_tools(),
-                "tool_choice": "required",
+                "tool_choice": "auto",
                 "temperature": 0,
                 "max_tokens": 400,
             },

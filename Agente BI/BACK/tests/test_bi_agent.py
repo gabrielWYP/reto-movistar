@@ -675,6 +675,7 @@ class BICoreTests(unittest.TestCase):
         self.assertEqual(calls[0][0]["messages"][0]["content"], SYSTEM_PROMPT)
         self.assertEqual(calls[0][0]["tools"][0]["type"], "function")
         self.assertIn("function", calls[0][0]["tools"][0])
+        self.assertEqual(calls[0][0]["tool_choice"], "auto")
         self.assertEqual(calls[0][1], "test")
 
     def test_opencode_http_client_sets_cloudflare_safe_headers(self):
@@ -710,6 +711,28 @@ class BICoreTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 RuntimeError,
                 r"OpenCode Go devolvió HTTP 403 \(Cloudflare error 1010\)\.",
+            ):
+                OpenCodeRuntime._http_post({"model": "test"}, "secret")
+
+    def test_opencode_http_client_reports_sanitized_provider_compatibility_error(self):
+        body = {
+            "error": {
+                "type": "invalid_request_error",
+                "code": "invalid_request_error",
+                "message": ("Error from provider: Thinking mode does not support this tool_choice"),
+            }
+        }
+        error = HTTPError(
+            "https://opencode.ai/zen/go/v1/chat/completions",
+            400,
+            "Bad Request",
+            hdrs=None,
+            fp=io.BytesIO(json.dumps(body).encode("utf-8")),
+        )
+        with patch("bi_agent.llm_runtime.urlopen", side_effect=error):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"HTTP 400 \(Provider incompatibility: thinking mode/tool_choice\)\.",
             ):
                 OpenCodeRuntime._http_post({"model": "test"}, "secret")
 
