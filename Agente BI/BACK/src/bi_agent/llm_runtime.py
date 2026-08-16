@@ -19,8 +19,10 @@ API_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 DEFAULT_MODEL = "deepseek-v4-flash"
 REQUEST_TIMEOUT_SECONDS = 60
 CLIENT_USER_AGENT = "sonia-bi/1.0"
-SELECTION_MAX_TOKENS = 400
-SELECTION_RETRY_MAX_TOKENS = 800
+SELECTION_MAX_TOKENS = 800
+SELECTION_RETRY_MAX_TOKENS = 1600
+PROBE_MAX_TOKENS = 64
+PROBE_RETRY_MAX_TOKENS = 512
 logger = logging.getLogger(__name__)
 
 
@@ -273,23 +275,37 @@ class OpenCodeRuntime:
         ) from last_error
 
     def probe(self) -> None:
-        """Perform one minimal authenticated completion for deployment verification."""
-        response = self._invoke(
-            {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": "Responde únicamente OK."},
-                    {"role": "user", "content": "Verifica conectividad."},
-                ],
-                "temperature": 0,
-                "max_tokens": 64,
-            },
-            "connection_probe",
+        """Verify connectivity, retrying once when thinking exhausts the small budget."""
+        for attempt, retry in enumerate((False, True), start=1):
+            response = self._invoke(
+                {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": "Responde únicamente OK."},
+                        {"role": "user", "content": "Verifica conectividad."},
+                    ],
+                    "temperature": 0,
+                    "max_tokens": PROBE_RETRY_MAX_TOKENS if retry else PROBE_MAX_TOKENS,
+                },
+                "connection_probe_retry" if retry else "connection_probe",
+            )
+            message = self._message(response)
+            completion_signals = (message.get("content"), message.get("reasoning_content"))
+            if any(isinstance(value, str) and value.strip() for value in completion_signals):
+                return
+            logger.warning(
+                "bi_llm_probe_empty",
+                extra={
+                    "provider": "opencode-go",
+                    "model": self.model,
+                    "attempt": attempt,
+                    **self._selection_diagnostics(response),
+                    **self._usage(response),
+                },
+            )
+        raise RuntimeError(
+            "OpenCode Go no devolvió contenido ni razonamiento tras dos intentos del probe."
         )
-        message = self._message(response)
-        completion_signals = (message.get("content"), message.get("reasoning_content"))
-        if not any(isinstance(value, str) and value.strip() for value in completion_signals):
-            raise RuntimeError("OpenCode Go no devolvió contenido ni razonamiento en el probe.")
 
     def interpret(self, question: str, tool_result: dict[str, Any]) -> str:
         """Generate the visible answer from compact deterministic evidence only."""
