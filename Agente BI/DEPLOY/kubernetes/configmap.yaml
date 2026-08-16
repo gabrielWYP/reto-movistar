@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bi-agent-config
+data:
+  SONIA_HOST: "0.0.0.0"
+  SONIA_PORT: "8080"
+  SONIA_LOG_LEVEL: "INFO"
+  SONIA_BI_MODEL: "gpt-5.6-terra"

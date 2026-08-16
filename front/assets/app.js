@@ -156,7 +156,13 @@ function renderAgents() {
 
   grid.querySelectorAll("[data-agent-id]").forEach((button) => {
     button.addEventListener("click", () => {
-      appState.selectedAgent = button.dataset.agentId;
+      const agentId = button.dataset.agentId;
+      const agentHref = AGENT_CONFIG[agentId].href;
+      if (agentHref) {
+        window.location.assign(agentHref);
+        return;
+      }
+      appState.selectedAgent = agentId;
       renderAgents();
       renderInspector();
     });

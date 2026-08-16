@@ -21,7 +21,7 @@ _AGENTS: tuple[AgentDescriptor, ...] = (
         agent_id="bi",
         display_name="Business Intelligence",
         source_branch="Mauricio",
-        package="sonia.agents.bi",
+        package="bi_agent",
         capabilities=("revenue_metrics", "aging_analysis", "executive_insights"),
     ),
 )

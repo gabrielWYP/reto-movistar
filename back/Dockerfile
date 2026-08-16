@@ -14,8 +14,11 @@ RUN groupadd --gid 1001 sonia \
 
 COPY back/pyproject.toml back/README.md LICENSE ./
 COPY back/src ./src
+COPY ["Agente BI/BACK/pyproject.toml", "Agente BI/BACK/README.md", "/opt/bi-agent/"]
+COPY ["Agente BI/BACK/src", "/opt/bi-agent/src"]
+COPY ["Agente BI/BACK/prompts", "/opt/bi-agent/prompts"]
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir /opt/bi-agent .
 
 USER 1001:1001
 

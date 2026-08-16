@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from bi_agent.application import BIBackend
 from fastapi.testclient import TestClient
 
 from sonia.config import Settings
@@ -39,3 +40,34 @@ def test_unknown_agent_returns_not_found() -> None:
         response = client.get("/api/agents/unknown")
 
     assert response.status_code == 404
+
+
+def test_shared_backend_mounts_bi_router() -> None:
+    """BI must remain reachable through the shared backend process."""
+    with TestClient(create_app(_settings(), bi_backend=BIBackend())) as client:
+        response = client.get("/api/bi/status")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "dataset_not_configured",
+        "dataset_configured": False,
+        "dataset_source": None,
+        "dataset_file_count": 0,
+        "dataset_bytes": 0,
+        "missing_files": [
+            "001_TBL_CLIENTES_B2B.csv",
+            "002_TBL_PLANTA_FIJA_B2B.csv",
+            "003_TBL_PLANTA_MOVIL_B2B.csv",
+            "004_TBL_PAGOS_B2B.csv",
+            "005_TBL_FACTURAS_B2B.csv",
+            "006_TBL_NOTAS_CREDITO_B2B.csv",
+        ],
+        "llm_available": False,
+        "tools": [
+            "data_quality_report",
+            "executive_snapshot",
+            "management_insights",
+            "recovery_intelligence",
+            "risk_concentration",
+        ],
+    }

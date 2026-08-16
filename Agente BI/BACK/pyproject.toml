@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sonia-bi-agent"
+version = "1.0.0"
+description = "Deterministic, evidence-first Business Intelligence Agent for SON-IA."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "pydantic>=2.10,<3.0",
+  "python-multipart>=0.0.20,<1.0",
+  "uvicorn[standard]>=0.34,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1.0",
+  "mypy>=1.15,<2.0",
+  "pytest>=8.3,<9.0",
+  "pytest-cov>=6.0,<7.0",
+  "ruff>=0.11,<1.0",
+]
+
+[project.scripts]
+sonia-bi = "bi_agent.cli:main"
+sonia-bi-api = "bi_agent.__main__:main"
+
+[tool.setuptools]
+packages = ["bi_agent", "bi_agent_prompts"]
+package-dir = {bi_agent = "src/bi_agent", bi_agent_prompts = "prompts"}
+include-package-data = true
+
+[tool.setuptools.package-data]
+bi_agent_prompts = ["*.md"]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --disable-warnings"
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = ["official_dataset: regression against the six official hackathon CSV files"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ANN"]
+# E501 is delegated to Ruff's formatter; long contractual strings cannot be split safely.
+# ANN401 is intentionally allowed at heterogeneous JSON boundaries; Mypy remains strict.
+ignore = ["E501", "ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test functions use pytest/unittest discovery signatures; return annotations add no value.
+"tests/*.py" = ["ANN"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = ["src"]
+packages = ["bi_agent"]

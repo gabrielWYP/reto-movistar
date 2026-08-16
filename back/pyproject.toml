@@ -18,7 +18,6 @@ dependencies = [
 
 [project.scripts]
 sonia = "sonia.__main__:main"
-sonia-bi = "sonia.agents.bi.cli:main"
 sonia-billing = "sonia.agents.billing.cli:main"
 sonia-collections = "sonia.agents.collections.cli:main"
 
@@ -50,11 +49,11 @@ select = ["E", "F", "I", "B", "UP", "ANN"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+mypy_path = ["src", "../Agente BI/BACK/src"]
 packages = ["sonia"]
 
 [[tool.mypy.overrides]]
 module = [
-  "sonia.agents.bi.*",
   "sonia.agents.billing.*",
   "sonia.agents.collections.*",
 ]

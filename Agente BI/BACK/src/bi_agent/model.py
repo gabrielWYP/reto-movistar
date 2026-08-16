@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Iterable
+from typing import Any
 
 from .data import SoniaDataset
 
@@ -106,8 +107,22 @@ class CanonicalRevenueModel:
         for invoice in self.invoices.values():
             if not invoice.issued_at or invoice.issued_at > as_of or invoice.currency != PEN:
                 continue
-            payments = sum((item.amount for item in invoice.payments if item.paid_at and item.paid_at <= as_of and item.currency == PEN), ZERO)
-            credits = sum((item.amount for item in invoice.credits if item.issued_at and item.issued_at <= as_of and item.currency == PEN), ZERO)
+            payments = sum(
+                (
+                    item.amount
+                    for item in invoice.payments
+                    if item.paid_at and item.paid_at <= as_of and item.currency == PEN
+                ),
+                ZERO,
+            )
+            credits = sum(
+                (
+                    item.amount
+                    for item in invoice.credits
+                    if item.issued_at and item.issued_at <= as_of and item.currency == PEN
+                ),
+                ZERO,
+            )
             rows.append(SnapshotInvoice(invoice, payments, credits))
         return rows
 
@@ -115,14 +130,27 @@ class CanonicalRevenueModel:
         return [item for item in self.all_payments if item.paid_at and item.paid_at > as_of]
 
 
-def _plant_summary(fixed_rows: list[dict[str, str]], mobile_rows: list[dict[str, str]]) -> dict[str, dict[str, object]]:
-    result: dict[str, dict[str, object]] = {}
-    for kind, rows, product in (("fixed", fixed_rows, "SUB_MAIN_OFFER_DESC"), ("mobile", mobile_rows, "PRODUCT_DESC")):
+def _plant_summary(
+    fixed_rows: list[dict[str, str]], mobile_rows: list[dict[str, str]]
+) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for kind, rows, product in (
+        ("fixed", fixed_rows, "SUB_MAIN_OFFER_DESC"),
+        ("mobile", mobile_rows, "PRODUCT_DESC"),
+    ):
         for row in rows:
             account = row.get("COD_CUENTA", "").strip()
             if not account:
                 continue
-            summary = result.setdefault(account, {"fixed_records": 0, "mobile_records": 0, "fixed_offers": set(), "mobile_products": set()})
+            summary = result.setdefault(
+                account,
+                {
+                    "fixed_records": 0,
+                    "mobile_records": 0,
+                    "fixed_offers": set(),
+                    "mobile_products": set(),
+                },
+            )
             summary[f"{kind}_records"] = int(summary[f"{kind}_records"]) + 1
             value = row.get(product, "").strip()
             if value:
@@ -154,47 +182,96 @@ def build_canonical_model(dataset: SoniaDataset) -> CanonicalRevenueModel:
         currency = row.get("MONEDA", "").strip().upper()
         if currency != PEN:
             excluded_invoice_currencies[currency or "MISSING"] += 1
-        invoices[document] = Invoice(document, row.get("RAZON_SOCIAL", "").strip(), row.get("COD_CLIENTE", "").strip(), row.get("COD_CUENTA", "").strip(), issued_at, due_at, row.get("FUENTE", "").strip(), row.get("SISTEMA", "").strip(), currency, money(row.get("CHARGE_TOTAL_AMOUNT")))
+        invoices[document] = Invoice(
+            document,
+            row.get("RAZON_SOCIAL", "").strip(),
+            row.get("COD_CLIENTE", "").strip(),
+            row.get("COD_CUENTA", "").strip(),
+            issued_at,
+            due_at,
+            row.get("FUENTE", "").strip(),
+            row.get("SISTEMA", "").strip(),
+            currency,
+            money(row.get("CHARGE_TOTAL_AMOUNT")),
+        )
 
     unmatched_payments: list[Payment] = []
     all_payments: list[Payment] = []
     payment_currency_mismatch = 0
     for row in dataset.payments:
-        item = Payment(row.get("FACTURA_AFECTADA", "").strip(), row.get("RAZON_SOCIAL", "").strip(), row.get("COD_CUENTA", "").strip(), parse_date(row.get("FECHA_PAGO")), row.get("MONEDA_FACTURA", "").strip().upper(), money(row.get("MONTO_PAGADO")))
-        all_payments.append(item)
-        invoice = invoices.get(item.document)
+        payment = Payment(
+            row.get("FACTURA_AFECTADA", "").strip(),
+            row.get("RAZON_SOCIAL", "").strip(),
+            row.get("COD_CUENTA", "").strip(),
+            parse_date(row.get("FECHA_PAGO")),
+            row.get("MONEDA_FACTURA", "").strip().upper(),
+            money(row.get("MONTO_PAGADO")),
+        )
+        all_payments.append(payment)
+        invoice = invoices.get(payment.document)
         if not invoice:
-            unmatched_payments.append(item)
-        elif item.currency != invoice.currency:
+            unmatched_payments.append(payment)
+        elif payment.currency != invoice.currency:
             payment_currency_mismatch += 1
         else:
-            invoice.payments.append(item)
+            invoice.payments.append(payment)
 
     unmatched_credits: list[CreditNote] = []
     credit_currency_mismatch = 0
     for row in dataset.credit_notes:
-        item = CreditNote(row.get("NRO_DOC_FISCAL", "").strip(), row.get("FACTURA_AFECTADA", "").strip(), parse_date(row.get("FECHAEMISION")), row.get("MONEDA", "").strip().upper(), money(row.get("MONTO")))
-        invoice = invoices.get(item.affected_invoice)
+        credit_note = CreditNote(
+            row.get("NRO_DOC_FISCAL", "").strip(),
+            row.get("FACTURA_AFECTADA", "").strip(),
+            parse_date(row.get("FECHAEMISION")),
+            row.get("MONEDA", "").strip().upper(),
+            money(row.get("MONTO")),
+        )
+        invoice = invoices.get(credit_note.affected_invoice)
         if not invoice:
-            unmatched_credits.append(item)
-        elif item.currency != invoice.currency:
+            unmatched_credits.append(credit_note)
+        elif credit_note.currency != invoice.currency:
             credit_currency_mismatch += 1
         else:
-            invoice.credits.append(item)
+            invoice.credits.append(credit_note)
 
     master = {row.get("RAZON_SOCIAL", "").strip(): row for row in dataset.customers}
     linked_by_name = sum(invoice.customer in master for invoice in invoices.values())
     quality = {
-        "duplicate_full_rows": {"fixed_plant": _unique_rows(dataset.fixed_plant), "mobile_plant": _unique_rows(dataset.mobile_plant)},
+        "duplicate_full_rows": {
+            "fixed_plant": _unique_rows(dataset.fixed_plant),
+            "mobile_plant": _unique_rows(dataset.mobile_plant),
+        },
         "invalid_dates": dict(invalid_dates),
         "excluded_invoice_currencies": dict(excluded_invoice_currencies),
         "payment_currency_mismatch_count": payment_currency_mismatch,
         "credit_note_currency_mismatch_count": credit_currency_mismatch,
-        "customer_master_name_coverage": {"matched_invoice_rows": linked_by_name, "invoice_rows": len(invoices)},
-        "invoice_plant_account_coverage": sum(invoice.account_code in _plant_summary(dataset.fixed_plant, dataset.mobile_plant) for invoice in invoices.values()),
+        "customer_master_name_coverage": {
+            "matched_invoice_rows": linked_by_name,
+            "invoice_rows": len(invoices),
+        },
+        "invoice_plant_account_coverage": sum(
+            invoice.account_code in _plant_summary(dataset.fixed_plant, dataset.mobile_plant)
+            for invoice in invoices.values()
+        ),
         "ruc_join_disabled": True,
     }
-    return CanonicalRevenueModel(invoices, master, _plant_summary(dataset.fixed_plant, dataset.mobile_plant), {"customers": len(dataset.customers), "fixed_plant": len(dataset.fixed_plant), "mobile_plant": len(dataset.mobile_plant), "payments": len(dataset.payments), "invoices": len(dataset.invoices), "credit_notes": len(dataset.credit_notes)}, quality, all_payments, unmatched_payments, unmatched_credits)
+    return CanonicalRevenueModel(
+        invoices,
+        master,
+        _plant_summary(dataset.fixed_plant, dataset.mobile_plant),
+        {
+            "customers": len(dataset.customers),
+            "fixed_plant": len(dataset.fixed_plant),
+            "mobile_plant": len(dataset.mobile_plant),
+            "payments": len(dataset.payments),
+            "invoices": len(dataset.invoices),
+            "credit_notes": len(dataset.credit_notes),
+        },
+        quality,
+        all_payments,
+        unmatched_payments,
+        unmatched_credits,
+    )
 
 
 def aging_bucket(days: int | None) -> str:

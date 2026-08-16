@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 CONTRACT_VERSION = "1.0"
 
@@ -42,4 +42,7 @@ class AgentResponse:
     upstream_inputs: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return json_value({"contract_version": CONTRACT_VERSION, "agent": "bi", **asdict(self)})
+        return cast(
+            dict[str, Any],
+            json_value({"contract_version": CONTRACT_VERSION, "agent": "bi", **asdict(self)}),
+        )

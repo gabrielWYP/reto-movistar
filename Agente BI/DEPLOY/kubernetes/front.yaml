@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bi-front
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bi-front
+  template:
+    metadata:
+      labels:
+        app: bi-front
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: web
+          image: ghcr.io/gabrielwyp/sonia-bi-front:replace-with-tag
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: BACKEND_HOST
+              value: bi-back
+            - name: BACKEND_PORT
+              value: "8080"
+          ports:
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bi-front
+spec:
+  type: ClusterIP
+  selector:
+    app: bi-front
+  ports:
+    - port: 8080
+      targetPort: 8080

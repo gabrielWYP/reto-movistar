@@ -1,28 +1,29 @@
 services:
-  back:
+  bi-back:
     build:
       context: .
-      dockerfile: back/Dockerfile
+      dockerfile: BACK/Dockerfile
     environment:
-      SONIA_ENVIRONMENT: local
+      SONIA_HOST: 0.0.0.0
+      SONIA_PORT: "8080"
       SONIA_LOG_LEVEL: INFO
       SONIA_BI_MODEL: ${SONIA_BI_MODEL:-gpt-5.6-terra}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     read_only: true
-    restart: unless-stopped
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
+    restart: unless-stopped
 
-  front:
+  bi-front:
     build:
       context: .
-      dockerfile: front/Dockerfile
-    depends_on:
-      back:
-        condition: service_healthy
+      dockerfile: FRONT/Dockerfile
     environment:
-      BACKEND_HOST: back
+      BACKEND_HOST: bi-back
       BACKEND_PORT: "8080"
+    depends_on:
+      bi-back:
+        condition: service_healthy
     ports:
-      - "${SONIA_PUBLIC_PORT:-8080}:8080"
+      - "${SONIA_BI_PUBLIC_PORT:-8082}:8080"
     restart: unless-stopped
