@@ -1,6 +1,6 @@
 import os
-from pathlib import Path
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from collections_agent.application import CollectionsBackend
@@ -18,14 +18,14 @@ class CollectionsContractTests(unittest.TestCase):
     @staticmethod
     def service_from_csv() -> CollectionsService:
         invoices = (
-            "RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|NRO_DOC_FISCAL|"
-            "FECHA_EMISION|FECHA_VTO|CHARGE_TOTAL_AMOUNT\n"
-            "CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.50\n"
-        ).encode()
+            b"RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|NRO_DOC_FISCAL|"
+            b"FECHA_EMISION|FECHA_VTO|CHARGE_TOTAL_AMOUNT\n"
+            b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.50\n"
+        )
         payments = (
-            "RAZON_SOCIAL|COD_CUENTA|FACTURA_AFECTADA|FECHA_PAGO|MONTO_PAGADO\n"
-            "CLIENT_TEST|ACC-1|FAC-001|2026-07-15|40.50\n"
-        ).encode()
+            b"RAZON_SOCIAL|COD_CUENTA|FACTURA_AFECTADA|FECHA_PAGO|MONTO_PAGADO\n"
+            b"CLIENT_TEST|ACC-1|FAC-001|2026-07-15|40.50\n"
+        )
         dataset, report = load_uploaded_csvs(
             [("facturas.csv", invoices), ("pagos.csv", payments)],
             max_files=6,
@@ -142,9 +142,7 @@ class CollectionsAgentTests(unittest.TestCase):
 
     def test_legacy_routes_still_delegate_to_deterministic_tools(self):
         service = self.service()
-        status, portfolio = route_payload(
-            service, "/api/portfolio?as_of_date=2026-08-07"
-        )
+        status, portfolio = route_payload(service, "/api/portfolio?as_of_date=2026-08-07")
         missing_status, error = route_payload(service, "/api/customer?id=UNKNOWN")
         self.assertEqual(status, 200)
         self.assertEqual(portfolio["operation"], "portfolio_snapshot")

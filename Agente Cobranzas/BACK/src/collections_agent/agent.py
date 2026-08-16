@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from .service import CollectionsService
 
@@ -25,15 +26,35 @@ class ToolDefinition:
 
 def tool_definitions() -> list[ToolDefinition]:
     return [
-        ToolDefinition("portfolio_snapshot", "KPIs y ageing de cartera.", {"as_of_date": "YYYY-MM-DD opcional"}),
-        ToolDefinition("customer_snapshot", "Situación de cobranza de un cliente.", {"customer_id": "CLIENT_XXXXX", "as_of_date": "opcional"}),
-        ToolDefinition("invoice_trace", "Trazabilidad de una factura.", {"document": "NRO_DOC_FISCAL", "as_of_date": "opcional"}),
-        ToolDefinition("collection_priorities", "Ranking determinístico de cobranza.", {"limit": "entero opcional", "as_of_date": "opcional"}),
-        ToolDefinition("reconciliation_exceptions", "Excepciones de aplicación documental.", {"limit": "entero opcional", "as_of_date": "opcional"}),
+        ToolDefinition(
+            "portfolio_snapshot", "KPIs y ageing de cartera.", {"as_of_date": "YYYY-MM-DD opcional"}
+        ),
+        ToolDefinition(
+            "customer_snapshot",
+            "Situación de cobranza de un cliente.",
+            {"customer_id": "CLIENT_XXXXX", "as_of_date": "opcional"},
+        ),
+        ToolDefinition(
+            "invoice_trace",
+            "Trazabilidad de una factura.",
+            {"document": "NRO_DOC_FISCAL", "as_of_date": "opcional"},
+        ),
+        ToolDefinition(
+            "collection_priorities",
+            "Ranking determinístico de cobranza.",
+            {"limit": "entero opcional", "as_of_date": "opcional"},
+        ),
+        ToolDefinition(
+            "reconciliation_exceptions",
+            "Excepciones de aplicación documental.",
+            {"limit": "entero opcional", "as_of_date": "opcional"},
+        ),
     ]
 
 
-def dispatch(service: CollectionsService, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def dispatch(
+    service: CollectionsService, tool_name: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
     tools: dict[str, Callable[..., dict[str, Any]]] = {
         "portfolio_snapshot": service.portfolio_snapshot,
         "customer_snapshot": service.customer_snapshot,

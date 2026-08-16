@@ -5,10 +5,10 @@ from __future__ import annotations
 import csv
 import io
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Iterable
 
 from .data import TABLE_FILES, SoniaDataset
 
@@ -93,8 +93,7 @@ def _rows(content: bytes) -> tuple[list[str], list[dict[str, str]]]:
     if len(headers) != len(set(headers)):
         raise CsvValidationError("El CSV contiene encabezados repetidos.")
     rows = [
-        {key.strip(): (value or "").strip() for key, value in row.items() if key}
-        for row in reader
+        {key.strip(): (value or "").strip() for key, value in row.items() if key} for row in reader
     ]
     if not rows:
         raise CsvValidationError("El CSV no contiene registros.")
@@ -104,9 +103,7 @@ def _rows(content: bytes) -> tuple[list[str], list[dict[str, str]]]:
 def _detect_table(filename: str, headers: list[str]) -> str:
     named = _FILE_TO_TABLE.get(filename.lower())
     header_set = set(headers)
-    candidates = [
-        name for name, required in TABLE_REQUIREMENTS.items() if required <= header_set
-    ]
+    candidates = [name for name, required in TABLE_REQUIREMENTS.items() if required <= header_set]
     if named:
         if TABLE_REQUIREMENTS[named] <= header_set:
             return named
@@ -114,15 +111,11 @@ def _detect_table(filename: str, headers: list[str]) -> str:
         raise CsvValidationError(f"{filename}: faltan columnas requeridas: {missing}.")
     if candidates:
         specificity = max(len(TABLE_REQUIREMENTS[name]) for name in candidates)
-        best = [
-            name for name in candidates if len(TABLE_REQUIREMENTS[name]) == specificity
-        ]
+        best = [name for name in candidates if len(TABLE_REQUIREMENTS[name]) == specificity]
         if len(best) == 1:
             return best[0]
     if not candidates:
-        raise CsvValidationError(
-            f"{filename}: no coincide con una tabla compatible del agente."
-        )
+        raise CsvValidationError(f"{filename}: no coincide con una tabla compatible del agente.")
     raise CsvValidationError(
         f"{filename}: no se puede identificar la tabla; usa el nombre oficial."
     )
@@ -166,15 +159,11 @@ def _validate_rows(table: str, rows: list[dict[str, str]]) -> list[str]:
     if table == "invoices":
         duplicates = [
             document
-            for document, count in Counter(
-                row["NRO_DOC_FISCAL"] for row in rows
-            ).items()
+            for document, count in Counter(row["NRO_DOC_FISCAL"] for row in rows).items()
             if count > 1
         ]
         if duplicates:
-            errors.append(
-                "Existen facturas repetidas; no se cargaron para evitar sobrescrituras."
-            )
+            errors.append("Existen facturas repetidas; no se cargaron para evitar sobrescrituras.")
     return errors
 
 
@@ -210,9 +199,7 @@ def load_uploaded_csvs(
             if errors:
                 raise CsvValidationError(f"{filename}: " + " ".join(errors))
             tables[table] = rows
-            report.accepted_tables.append(
-                {"table": table, "file": filename, "records": len(rows)}
-            )
+            report.accepted_tables.append({"table": table, "file": filename, "records": len(rows)})
         except CsvValidationError as error:
             report.errors.append(str(error))
 

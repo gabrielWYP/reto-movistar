@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Iterable
 
 from .data import SoniaDataset
-from .rules import TOLERANCE, aging_bucket
+from .rules import TOLERANCE
 
 ZERO = Decimal("0")
 
@@ -123,13 +123,11 @@ class Ledger:
 
     @property
     def latest_event_date(self) -> date:
-        dates = [
-            item.issued_at for item in self.invoices.values()
-        ] + [
-            payment.paid_at for item in self.invoices.values() for payment in item.payments
-        ] + [
-            credit.issued_at for item in self.invoices.values() for credit in item.credits
-        ]
+        dates = (
+            [item.issued_at for item in self.invoices.values()]
+            + [payment.paid_at for item in self.invoices.values() for payment in item.payments]
+            + [credit.issued_at for item in self.invoices.values() for credit in item.credits]
+        )
         return max(value for value in dates if value is not None)
 
 

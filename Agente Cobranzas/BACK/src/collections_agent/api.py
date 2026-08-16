@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .agent import tool_definitions
 from .application import CollectionsBackend
 from .config import CollectionsSettings, get_settings
+from .service import CollectionsService
 
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ def create_collections_router(backend: CollectionsBackend) -> APIRouter:
     """Create routes mounted by the single shared FastAPI application."""
     router = APIRouter(prefix="/api/collections", tags=["collections"])
 
-    def service():  # type: ignore[no-untyped-def]
+    def service() -> CollectionsService:
         try:
             return backend.service()
         except RuntimeError as error:

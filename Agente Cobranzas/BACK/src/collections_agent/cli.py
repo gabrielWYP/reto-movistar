@@ -54,6 +54,7 @@ def main() -> None:
         payload = service.reconciliation_exceptions(args.limit, args.as_of_date)
     else:
         from .openai_runtime import ask
+
         payload = ask(service, args.question, args.model)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 

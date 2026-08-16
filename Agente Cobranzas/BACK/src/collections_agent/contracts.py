@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 CONTRACT_VERSION = "1.0"
 
@@ -44,5 +44,4 @@ class AgentResponse:
             "agent": "collections",
             **asdict(self),
         }
-        return json_value(payload)
-
+        return cast(dict[str, Any], json_value(payload))

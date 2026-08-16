@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, cast
 
 from .agent import SYSTEM_PROMPT, dispatch
 from .config import CollectionsSettings
@@ -94,7 +94,8 @@ def _client(api_key: str) -> Any:
 
 def _post(client: Any, payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        return client.responses.create(**payload).model_dump(mode="json")
+        response = client.responses.create(**payload).model_dump(mode="json")
+        return cast(dict[str, Any], response)
     except Exception as error:
         raise RuntimeError(
             "OpenAI no pudo completar la consulta; revisa la clave y el acceso al modelo."
@@ -134,9 +135,7 @@ def ask(
     selected_model = model or runtime_settings.model
     client = _client(api_key)
     responses: list[dict[str, Any]] = []
-    conversation: list[dict[str, Any]] = [
-        {"role": "user", "content": question.strip()}
-    ]
+    conversation: list[dict[str, Any]] = [{"role": "user", "content": question.strip()}]
     response = _post(
         client,
         {

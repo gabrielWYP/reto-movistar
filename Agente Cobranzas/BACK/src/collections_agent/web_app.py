@@ -8,12 +8,13 @@ mapping so existing deterministic callers can migrate without a second server.
 from __future__ import annotations
 
 from http import HTTPStatus
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .service import CollectionsService
 
 
-def route_payload(service: CollectionsService, path: str) -> tuple[int, dict]:
+def route_payload(service: CollectionsService, path: str) -> tuple[int, dict[str, Any]]:
     """Map legacy local routes to the current deterministic service."""
     request = urlparse(path)
     params = parse_qs(request.query)
