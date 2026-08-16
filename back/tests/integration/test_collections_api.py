@@ -1,10 +1,12 @@
 """Integration tests for Cobranzas inside the shared FastAPI process."""
 
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from bi_agent.application import BIBackend
 from collections_agent.application import CollectionsBackend
 from collections_agent.data import SoniaDataset
+from collections_agent.llm_runtime import OpenCodeRuntime
 from collections_agent.service import CollectionsService
 from fastapi.testclient import TestClient
 
@@ -120,3 +122,64 @@ def test_collections_rejects_an_incompatible_csv_without_mixing_data() -> None:
 
     assert response.status_code == 422
     assert existing.status_code == 200
+
+
+def test_collections_query_uses_opencode_and_reports_ai_mode() -> None:
+    responses = [
+        {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "type": "function",
+                                "function": {
+                                    "name": "collection_priorities",
+                                    "arguments": '{"limit":5}',
+                                },
+                            }
+                        ]
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 20, "completion_tokens": 5},
+        },
+        {
+            "choices": [{"message": {"content": "Prioriza el saldo vencido documentado."}}],
+            "usage": {"prompt_tokens": 30, "completion_tokens": 8},
+        },
+    ]
+    runtime = OpenCodeRuntime(post=Mock(side_effect=responses))
+    backend = CollectionsBackend(service=_collections_backend().service(), runtime=runtime)
+    app = create_app(_settings(), bi_backend=BIBackend(), collections_backend=backend)
+
+    with patch.dict("os.environ", {"OPENCODE_KEY": "test-only"}, clear=True):
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/collections/query",
+                json={"question": "¿A quién priorizo?", "as_of_date": "2026-08-07"},
+            )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "llm"
+    assert response.json()["tool_used"] == "collection_priorities"
+    assert response.json()["llm"]["provider"] == "opencode-go"
+    assert response.json()["usage"]["prompt_tokens"] == 50
+
+
+def test_collections_query_falls_back_without_claiming_ai_generation() -> None:
+    runtime = OpenCodeRuntime(post=Mock(side_effect=RuntimeError("provider unavailable")))
+    backend = CollectionsBackend(service=_collections_backend().service(), runtime=runtime)
+    app = create_app(_settings(), bi_backend=BIBackend(), collections_backend=backend)
+
+    with patch.dict("os.environ", {"OPENCODE_KEY": "test-only"}, clear=True):
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/collections/query",
+                json={"question": "Resume la cartera", "as_of_date": "2026-08-07"},
+            )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "deterministic_fallback"
+    assert "llm" not in response.json()

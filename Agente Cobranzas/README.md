@@ -2,7 +2,7 @@
 
 Módulo independiente para reconstruir la cartera B2B, priorizar gestiones de
 cobro y detectar aplicaciones de pago que requieren validación. Los cálculos
-financieros se ejecutan en Python; OpenAI interpreta la intención, selecciona
+financieros se ejecutan en Python; OpenCode Go interpreta la intención, selecciona
 tools y redacta respuestas sustentadas en evidencia estructurada.
 
 ## Arquitectura
@@ -14,7 +14,7 @@ FRONT: Nginx + interfaz estática humanizada
   ↓ /api/collections/*
 BACK: FastAPI
   ↓
-CollectionsBackend → OpenAI/dispatch → CollectionsService
+CollectionsBackend → OpenCode/dispatch → CollectionsService
                                           ↓
                        ledger + reglas + dataset validado
                                           ↓
@@ -25,9 +25,8 @@ CollectionsBackend → OpenAI/dispatch → CollectionsService
 Agente Cobranzas/
 ├── BACK/     paquete `collections_agent`, API y pruebas
 ├── FRONT/    interfaz estática y contenedor Nginx
-├── DEPLOY/   referencia standalone para Kubernetes
 ├── data/     datos locales ignorados por Git e imágenes
-└── compose.yaml
+└── README.md
 ```
 
 ## Capacidades y tools
@@ -69,19 +68,16 @@ La carga acepta únicamente CSV compatibles. Valida nombres de tabla, columnas,
 tipos, límites y relaciones mínimas antes de reemplazar el dataset activo. Una
 carga inválida no mezcla ni sustituye silenciosamente la información anterior.
 
-## Ejecución independiente
+## Ejecución local
 
-Con Docker:
+El despliegue soportado usa el `compose.yaml` raíz: un contenedor backend para
+los tres agentes y un contenedor frontend para todas las interfaces.
 
 ```bash
-cd "Agente Cobranzas"
 docker compose up --build --wait
 ```
 
-Abrir `http://localhost:8081`. Solo `collections-front` publica un puerto;
-`collections-back` permanece en la red interna.
-
-Sin Docker:
+Para desarrollar únicamente el paquete Python:
 
 ```powershell
 cd "Agente Cobranzas\BACK"
@@ -90,23 +86,39 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m collections_agent
 ```
 
-## OpenAI y control de costo
+## OpenCode Go y control de costo
 
-`OPENAI_API_KEY` se inyecta en runtime y nunca se versiona. El SDK oficial usa
-Responses API con function calling. El modelo de costo balanceado, esfuerzo
-reducido, máximo de llamadas a tools y salida compacta se definen una sola vez en
-`BACK/src/collections_agent/config.py`; pueden cambiarse mediante variables
-`SONIA_COLLECTIONS_*`.
+`OPENCODE_KEY` se inyecta en runtime y nunca se versiona. El endpoint compatible
+con OpenAI usa `deepseek-v4-flash` por defecto. Cada consulta realiza como máximo
+una llamada de selección y una de interpretación; la selección debe contener
+exactamente una tool autorizada. Los límites de salida se configuran mediante
+variables `SONIA_COLLECTIONS_*`.
 
 El modelo nunca recibe el dataset completo ni calcula saldos. Recibe solamente
-resultados estructurados de las tools necesarias. Sin clave, todas las rutas y
-tools determinísticas siguen disponibles.
+evidencia compacta del resultado determinístico. Sin clave o ante un fallo del
+proveedor, las rutas y tools siguen disponibles y la respuesta indica el modo
+determinístico; la insignia `Hecho con IA` solo aparece en modo `llm`.
+
+## Guardrails y observabilidad
+
+- La selección debe producir exactamente una de las cinco tools autorizadas.
+- La fecha de corte enviada por la interfaz prevalece sobre la sugerida por el modelo.
+- Identificadores, límites y argumentos desconocidos se validan antes del dispatch.
+- No se permiten cálculos del modelo, código arbitrario, predicciones ni causalidad.
+- La conciliación es documental y las excepciones no se presentan como errores confirmados.
+- Cada etapa registra proveedor, modelo, latencia y tokens cuando el proveedor los informa.
+- Los logs nunca incluyen prompts, CSV, evidencia completa, API keys ni cabeceras de autorización.
+
+`POST /api/collections/query` devuelve `mode`, `tool_used`, argumentos validados,
+resultado determinístico, metadata del prompt y consumo de tokens. En un fallo del
+proveedor devuelve `deterministic_fallback`, sin marcar la respuesta como generada por IA.
 
 ## Integración con SON-IA
 
 La implementación principal permanece en esta carpeta. La imagen compartida
 `back/Dockerfile` instala `collections_agent` y monta su router; la imagen
-`front/Dockerfile` publica este frontend bajo `/agents/collections/`. El
+`front/Dockerfile` publica este frontend bajo `/agents/collections/`. No existen
+Deployments ni contenedores productivos específicos por agente. El
 Supervisor podrá consumir `CollectionsBackend.execute_tool()` o `query()` sin
 depender del frontend.
 

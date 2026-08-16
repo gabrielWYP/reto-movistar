@@ -42,8 +42,7 @@ back/
 └── pyproject.toml
 Agente Cobranzas/
 ├── BACK/src/collections_agent/
-├── FRONT/
-└── DEPLOY/
+└── FRONT/
 Agente BI/
 ├── BACK/src/bi_agent/
 ├── FRONT/
@@ -76,11 +75,10 @@ El Agente de Cobranzas se abre desde su tarjeta o directamente en
 `/api/collections/*`; los CSV validados también permanecen en RAM y no se
 mezclan con el dataset anterior cuando una carga es incompatible.
 
-Las consultas BI usan OpenCode Go cuando `OPENCODE_KEY` está disponible en el
-entorno del backend. El modelo predeterminado es `deepseek-v4-flash`: selecciona
-una tool cerrada, Python calcula el resultado y el modelo redacta la respuesta
-solo con evidencia compacta. La clave nunca se envía al frontend ni se incluye
-en la imagen.
+Las consultas BI y Cobranzas usan OpenCode Go cuando `OPENCODE_KEY` está
+disponible en el backend. Cada agente usa `deepseek-v4-flash` por defecto,
+exige una tool cerrada, calcula en Python y redacta solo desde evidencia
+compacta. La clave nunca se envía al frontend ni se incluye en la imagen.
 
 ## Ejecutar solo el backend
 

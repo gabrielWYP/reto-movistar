@@ -21,6 +21,7 @@ COPY ["Agente BI/BACK/prompts", "/opt/bi-agent/prompts"]
 COPY ["Agente BI/FRONT", "/app/front/bi"]
 COPY ["Agente Cobranzas/BACK/pyproject.toml", "Agente Cobranzas/BACK/README.md", "/opt/collections-agent/"]
 COPY ["Agente Cobranzas/BACK/src", "/opt/collections-agent/src"]
+COPY ["Agente Cobranzas/BACK/prompts", "/opt/collections-agent/prompts"]
 COPY ["Agente Cobranzas/FRONT/index.html", "/app/front/agents/collections/index.html"]
 COPY ["Agente Cobranzas/FRONT/assets", "/app/front/agents/collections/assets"]
 

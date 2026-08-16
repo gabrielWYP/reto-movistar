@@ -29,6 +29,10 @@
           <input id="question" type="text" maxlength="1000" placeholder="Ej.: ¿Qué clientes requieren gestión urgente?" aria-label="Pregunta para el agente">
           <button id="ask" class="primary" type="button">Preguntar</button>
         </div>
+        <div class="answer-meta">
+          <span id="ai-badge" class="ai-generated" hidden>✦ Hecho con IA</span>
+          <small id="answer-mode"></small>
+        </div>
         <div id="answer" class="answer hidden" aria-live="polite"></div>
       </section>
 
@@ -36,7 +40,7 @@
         <div class="section-heading">
           <div>
             <h2 id="upload-title">Datos para el análisis</h2>
-            <p>Carga uno o más CSV. Se validan columnas, tipos y compatibilidad antes de usarlos.</p>
+            <p>Carga hasta seis CSV en una sola selección. Permanecen únicamente en memoria.</p>
           </div>
           <span id="data-status" class="status">Verificando dataset…</span>
         </div>

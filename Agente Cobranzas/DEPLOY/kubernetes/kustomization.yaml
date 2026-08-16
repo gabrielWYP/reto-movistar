@@ -1,4 +1,0 @@
-resources:
-  - configmap.yaml
-  - back.yaml
-  - front.yaml

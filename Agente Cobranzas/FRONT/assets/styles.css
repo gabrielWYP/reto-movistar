@@ -67,6 +67,9 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px 
 .notice.error, .answer.error { background: #fff0f1; border-left-color: var(--red); }
 .notice.success { background: #edf9f4; border-left-color: var(--green); }
 .answer { white-space: pre-wrap; }
+.answer-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; color: var(--muted); }
+.ai-generated { display: inline-block; padding: 4px 10px; color: #075d45; background: #dff7ed; border: 1px solid #a6dfca; border-radius: 99px; font-size: 12px; font-weight: 800; }
+.ai-generated[hidden] { display: none; }
 
 .status, .badge { display: inline-block; padding: 3px 9px; color: #2c517a; background: #e6eef8; border-radius: 99px; font-size: 12px; font-weight: 700; }
 .status.ready, .LOW, .PAGADA, .CONCILIADA { color: var(--green); background: #e5f5ee; }

@@ -17,7 +17,7 @@ lógicos:
 No se crea un microservicio productivo por agente. Facturación es un módulo del
 proyecto común; Cobranzas y BI son paquetes instalables independientes que la
 misma imagen backend incorpora en un único proceso porque comparten contrato,
-despliegue y ciclo E2E. Sus despliegues standalone son solo para desarrollo.
+despliegue y ciclo E2E. No se mantienen manifiestos productivos por agente.
 
 ## Contrato de red
 

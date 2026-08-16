@@ -236,5 +236,25 @@ jobs:
             'import json,sys; payload=json.loads(sys.argv[1]); assert payload["status"] == "dataset_not_configured"' \
             "${collections_status}"
 
+          collections_upload="$(curl --fail --silent --show-error \
+            --request POST http://127.0.0.1:18081/api/collections/dataset \
+            -F 'files=@back/tests/fixtures/collections/001_TBL_CLIENTES_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/collections/002_TBL_PLANTA_FIJA_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/collections/003_TBL_PLANTA_MOVIL_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/collections/004_TBL_PAGOS_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/collections/005_TBL_FACTURAS_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/collections/006_TBL_NOTAS_CREDITO_B2B.csv;type=text/csv')"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["ready_for_analysis"]; assert len(payload["accepted_tables"]) == 6' \
+            "${collections_upload}"
+
+          collections_query="$(curl --fail --silent --show-error \
+            --request POST http://127.0.0.1:18081/api/collections/query \
+            --header 'content-type: application/json' \
+            --data '{"question":"Resume la cartera","as_of_date":"2026-08-07"}')"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["mode"] == "deterministic"; assert payload["tool_used"] == "portfolio_snapshot"' \
+            "${collections_query}"
+
           test "$(docker inspect "$(docker compose ps --quiet back)" \
             --format '{{.Config.User}}')" = "1001:1001"

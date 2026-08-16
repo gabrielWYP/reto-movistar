@@ -422,11 +422,11 @@ async function refreshStatus() {
     const data = await response.json();
     if (!response.ok) throw new Error();
     const aiBadge = byId("ai-status");
-    aiBadge.textContent = data.openai_enabled ? "Consultas con IA disponibles" : "Consultas con IA no disponibles";
-    aiBadge.title = data.openai_enabled
-      ? `Modelo configurado: ${data.model}`
+    aiBadge.textContent = data.llm_available ? "Consultas con IA disponibles" : "Consultas con IA no disponibles";
+    aiBadge.title = data.llm_available
+      ? `Proveedor: ${data.llm?.provider || "OpenCode Go"} · Modelo: ${data.llm?.model || data.model}`
       : "La configuración debe realizarla un administrador.";
-    aiBadge.className = `status ${data.openai_enabled ? "ready" : "warn"}`;
+    aiBadge.className = `status ${data.llm_available ? "ready" : "warn"}`;
     const dataBadge = byId("data-status");
     dataBadge.textContent = data.dataset_configured ? "Dataset listo" : "Carga los CSV para comenzar";
     dataBadge.className = `status ${data.dataset_configured ? "ready" : "warn"}`;
@@ -444,6 +444,11 @@ async function uploadDataset() {
   if (!files.length) {
     result.className = "notice error";
     result.textContent = "Selecciona al menos un archivo CSV.";
+    return;
+  }
+  if (files.length > 6) {
+    result.className = "notice error";
+    result.textContent = "Selecciona como máximo seis archivos CSV.";
     return;
   }
   const form = new FormData();
@@ -468,7 +473,11 @@ async function uploadDataset() {
 async function askAgent() {
   const question = byId("question").value.trim();
   const answer = byId("answer");
+  const aiBadge = byId("ai-badge");
+  const answerMode = byId("answer-mode");
   answer.classList.remove("hidden", "error");
+  aiBadge.hidden = true;
+  answerMode.textContent = "";
   if (!question) {
     answer.textContent = "Escribe una pregunta para el agente.";
     return;
@@ -478,14 +487,23 @@ async function askAgent() {
     const response = await fetch(`${API_BASE}/query`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, as_of_date: state.asOf }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(errorMessage(data, "No se pudo completar la consulta con IA."));
     answer.textContent = data.answer || "La IA no devolvió una respuesta.";
+    const aiGenerated = data.mode === "llm";
+    aiBadge.hidden = !aiGenerated;
+    answerMode.textContent = aiGenerated
+      ? `${data.llm?.provider || "IA"} · ${data.llm?.model || "modelo configurado"} · cálculos determinísticos`
+      : data.mode === "deterministic_fallback"
+        ? "Respuesta determinística: el proveedor de IA no completó la consulta."
+        : "Respuesta determinística.";
   } catch (error) {
     answer.classList.add("error");
     answer.textContent = error.message || "No fue posible utilizar la IA.";
+    aiBadge.hidden = true;
+    answerMode.textContent = "";
   }
 }
 

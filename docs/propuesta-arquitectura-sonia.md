@@ -194,8 +194,7 @@ reto-movistar/
 │   └── pyproject.toml
 ├── Agente Cobranzas/
 │   ├── BACK/src/collections_agent/
-│   ├── FRONT/
-│   └── DEPLOY/
+│   └── FRONT/
 ├── Agente BI/
 │   ├── BACK/src/bi_agent/
 │   ├── FRONT/
