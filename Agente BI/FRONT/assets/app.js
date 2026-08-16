@@ -92,9 +92,13 @@ function renderResult(payload) {
   byId("analysis-title").textContent = analysis.title || TOOL_LABELS[payload.tool_used] || "Análisis BI";
   byId("analysis-date").textContent = `Corte: ${analysis.as_of_date || payload.agent_response?.as_of_date || "—"}`;
   byId("answer").textContent = payload.answer || "Resultado disponible en la evidencia.";
-  byId("execution-mode").textContent = payload.mode === "llm"
+  const aiGenerated = payload.mode === "llm";
+  byId("ai-badge").hidden = !aiGenerated;
+  byId("execution-mode").textContent = aiGenerated
     ? `Respuesta generada por ${payload.llm?.provider || "IA"} · ${payload.llm?.model || "modelo configurado"} · cálculos verificables`
-    : "Análisis basado en reglas verificables";
+    : payload.mode === "deterministic_fallback"
+      ? "Respuesta verificable sin IA · el proveedor no estuvo disponible"
+      : "Análisis basado en reglas verificables";
   renderKpis(view.kpis);
   renderComponents(view.components);
   renderStories("findings-section", "findings", view.findings, "finding");
