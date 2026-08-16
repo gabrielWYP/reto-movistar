@@ -93,7 +93,7 @@ function renderResult(payload) {
   byId("analysis-date").textContent = `Corte: ${analysis.as_of_date || payload.agent_response?.as_of_date || "—"}`;
   byId("answer").textContent = payload.answer || "Resultado disponible en la evidencia.";
   byId("execution-mode").textContent = payload.mode === "llm"
-    ? "Interpretación asistida por IA sobre cálculos verificables"
+    ? `Respuesta generada por ${payload.llm?.provider || "IA"} · ${payload.llm?.model || "modelo configurado"} · cálculos verificables`
     : "Análisis basado en reglas verificables";
   renderKpis(view.kpis);
   renderComponents(view.components);
@@ -110,8 +110,10 @@ function renderResult(payload) {
 
 async function queryAgent(question) {
   const button = byId("submit-query");
+  const form = byId("query-form");
   button.disabled = true;
-  button.firstChild.textContent = "Analizando… ";
+  form.setAttribute("aria-busy", "true");
+  button.firstChild.textContent = "Consultando IA… ";
   try {
     const response = await fetch("/api/bi/query", {
       method: "POST",
@@ -125,6 +127,7 @@ async function queryAgent(question) {
     showToast(error.message || "No se pudo completar la consulta.");
   } finally {
     button.disabled = false;
+    form.removeAttribute("aria-busy");
     button.firstChild.textContent = "Analizar ";
   }
 }
@@ -158,7 +161,10 @@ async function loadStatus() {
     const response = await fetch("/api/bi/status");
     const status = await response.json();
     const label = status.dataset_configured ? "Dataset listo" : "Dataset pendiente";
-    byId("system-status").textContent = `${label} · ${status.llm_available ? "IA disponible" : "Modo verificable"}`;
+    const aiStatus = status.llm_available
+      ? `${status.llm.provider} · ${status.llm.model}`
+      : "IA no configurada · fallback verificable";
+    byId("system-status").textContent = `${label} · ${aiStatus}`;
     byId("system-status").classList.toggle("ready", status.dataset_configured);
     byId("dataset-summary").textContent = status.dataset_configured
       ? `${status.dataset_file_count} archivos · ${status.dataset_bytes} bytes en memoria · se perderán al reiniciar.`

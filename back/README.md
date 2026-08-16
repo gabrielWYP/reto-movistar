@@ -24,6 +24,12 @@ Contratos principales:
 - `GET /api/bi/status`: disponibilidad del dataset y las tools BI.
 - `POST /api/bi/query`: consulta al agente BI.
 
+`POST /api/bi/query` usa OpenCode Go con `deepseek-v4-flash` cuando el proceso
+recibe `OPENCODE_KEY`. `GET /api/bi/status` expone proveedor, modelo y
+disponibilidad sin revelar credenciales. Si el proveedor no está configurado o
+falla, las tools determinísticas permanecen operativas y la respuesta indica el
+modo de fallback.
+
 Los módulos integrados viven en `src/sonia/agents/` o en el paquete hermano
 `Agente BI/BACK/src/bi_agent`. Para ejecutar
 las pruebas que usan el dataset oficial se debe definir `SONIA_DATASET`; el

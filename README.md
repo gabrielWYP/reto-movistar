@@ -66,6 +66,12 @@ backend compartido publica sus contratos en `/api/bi/*`. El dataset se carga
 desde esa interfaz o mediante `POST /api/bi/dataset`; permanece en RAM dentro
 del contenedor `back` y se pierde al reiniciar el pod.
 
+Las consultas BI usan OpenCode Go cuando `OPENCODE_KEY` está disponible en el
+entorno del backend. El modelo predeterminado es `deepseek-v4-flash`: selecciona
+una tool cerrada, Python calcula el resultado y el modelo redacta la respuesta
+solo con evidencia compacta. La clave nunca se envía al frontend ni se incluye
+en la imagen.
+
 ## Ejecutar solo el backend
 
 ```bash

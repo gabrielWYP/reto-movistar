@@ -52,6 +52,7 @@ def create_bi_router(backend: BIBackend) -> APIRouter:
         return {
             **backend.dataset_status(),
             "llm_available": backend.llm_available,
+            "llm": backend.llm_metadata,
             "tools": sorted(TOOL_NAMES),
         }
 

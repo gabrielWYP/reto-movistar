@@ -108,9 +108,16 @@ la red interna. Para cambiar el puerto usa `SONIA_BI_PUBLIC_PORT`.
 
 ## LLM y prompt versionado
 
-Sin `OPENAI_API_KEY`, las cinco consultas funcionan en modo determinístico.
-Con key, el modelo puede elegir una tool e interpretar su resultado compacto;
-nunca recibe CSV completos, el modelo canónico o secretos.
+Con `OPENCODE_KEY`, el backend llama al endpoint OpenAI-compatible de OpenCode
+Go y usa `deepseek-v4-flash` por defecto. El modelo selecciona una tool cerrada
+y genera la respuesta visible a partir de su resultado determinístico compacto;
+nunca recibe CSV completos, el modelo canónico o secretos. `SONIA_BI_MODEL`
+permite cambiar el modelo por otro identificador disponible en OpenCode Go.
+
+Sin key, o ante un error del proveedor, las cinco tools siguen disponibles en
+modo determinístico. La respuesta informa `mode`, proveedor, modelo y versión
+del prompt; los logs estructurados registran latencia y tokens cuando OpenCode
+los reporta.
 
 `BACK/prompts/system_v1.md` es la única fuente de verdad. Declara identidad,
 tools, inputs/outputs permitidos, guardrails, riesgos y evals. La respuesta

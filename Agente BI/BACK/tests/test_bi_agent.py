@@ -17,7 +17,7 @@ from bi_agent import BIBackend
 from bi_agent.agent import TOOL_NAMES, ask, dispatch, tool_schemas, validate_arguments
 from bi_agent.api import create_app, create_bi_router
 from bi_agent.config import Settings
-from bi_agent.llm_runtime import OpenAIRuntime
+from bi_agent.llm_runtime import OpenCodeRuntime
 from bi_agent.presentation import METRIC_LABELS, presentation_for
 from bi_agent.prompting import SYSTEM_PROMPT, load_system_prompt
 from bi_agent.service import BIService
@@ -490,7 +490,7 @@ class BICoreTests(unittest.TestCase):
         self.assertTrue(aging["data"])
 
     def test_fastapi_boundary_uses_agent_without_api_key(self):
-        runtime = OpenAIRuntime()
+        runtime = OpenCodeRuntime()
         application = FastAPI()
         application.include_router(
             create_bi_router(BIBackend(service=self.service, runtime=runtime))
@@ -638,22 +638,49 @@ class BICoreTests(unittest.TestCase):
         self.assertEqual(response.json()["dataset_file_count"], 6)
         self.assertEqual(query.status_code, 200)
 
-    def test_openai_runtime_is_mockable_and_requires_exactly_one_function_call(self):
+    def test_opencode_runtime_uses_chat_completions_tool_calling(self):
         response = {
-            "output": [
+            "choices": [
                 {
-                    "type": "function_call",
-                    "name": "executive_snapshot",
-                    "call_id": "call_1",
-                    "arguments": "{}",
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "executive_snapshot",
+                                    "arguments": "{}",
+                                },
+                            }
+                        ],
+                    }
                 }
-            ]
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
         }
-        runtime = OpenAIRuntime(post=lambda payload, key: response)
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}, clear=True):
+        calls = []
+
+        def post(payload, key):
+            calls.append((payload, key))
+            return response
+
+        runtime = OpenCodeRuntime(post=post)
+        with patch.dict("os.environ", {"OPENCODE_KEY": "test"}, clear=True):
             choice = runtime.select_tool("resumen", "2026-07-31")
         self.assertEqual(choice["tool_name"], "executive_snapshot")
         self.assertEqual(choice["arguments"], {})
+        self.assertEqual(calls[0][0]["model"], "deepseek-v4-flash")
+        self.assertEqual(calls[0][0]["messages"][0]["content"], SYSTEM_PROMPT)
+        self.assertEqual(calls[0][0]["tools"][0]["type"], "function")
+        self.assertIn("function", calls[0][0]["tools"][0])
+        self.assertEqual(calls[0][1], "test")
+
+    def test_opencode_probe_requires_a_real_text_completion(self):
+        response = {"choices": [{"message": {"role": "assistant", "content": "OK"}}]}
+        runtime = OpenCodeRuntime(post=lambda payload, key: response)
+        with patch.dict("os.environ", {"OPENCODE_KEY": "test"}, clear=True):
+            runtime.probe()
 
     def test_presentation_labels_metrics_without_changing_numeric_values_or_response(self):
         response = self.service.risk_concentration(
@@ -769,16 +796,34 @@ class BICoreTests(unittest.TestCase):
         responses = iter(
             [
                 {
-                    "output": [
+                    "choices": [
                         {
-                            "type": "function_call",
-                            "name": "executive_snapshot",
-                            "call_id": "call_1",
-                            "arguments": "{}",
+                            "message": {
+                                "role": "assistant",
+                                "tool_calls": [
+                                    {
+                                        "id": "call_1",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "executive_snapshot",
+                                            "arguments": "{}",
+                                        },
+                                    }
+                                ],
+                            }
                         }
                     ]
                 },
-                {"output_text": "Respuesta ejecutiva respaldada por evidencia."},
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": "Respuesta ejecutiva respaldada por evidencia.",
+                            }
+                        }
+                    ]
+                },
             ]
         )
 
@@ -786,13 +831,17 @@ class BICoreTests(unittest.TestCase):
             calls.append(payload)
             return next(responses)
 
-        runtime = OpenAIRuntime(post=post)
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test"}, clear=True):
+        runtime = OpenCodeRuntime(post=post)
+        with patch.dict("os.environ", {"OPENCODE_KEY": "test"}, clear=True):
             result = ask(self.service, "¿Cómo está la cartera?", "2026-07-31", runtime)
         self.assertEqual(result["mode"], "llm")
         self.assertEqual(result["prompt"], {"prompt_id": "bi-system", "prompt_version": "1.0"})
-        self.assertEqual(calls[0]["instructions"], SYSTEM_PROMPT)
+        self.assertEqual(
+            result["llm"],
+            {"provider": "opencode-go", "model": "deepseek-v4-flash"},
+        )
+        self.assertEqual(calls[0]["messages"][0]["content"], SYSTEM_PROMPT)
         serialized = json.dumps(calls, ensure_ascii=False)
         self.assertNotIn("005_TBL_FACTURAS_B2B.csv", serialized)
         self.assertNotIn("CHARGE_TOTAL_AMOUNT", serialized)
-        self.assertNotIn("OPENAI_API_KEY", serialized)
+        self.assertNotIn("OPENCODE_KEY", serialized)
