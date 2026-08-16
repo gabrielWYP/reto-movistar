@@ -13,6 +13,8 @@ const content = byId("content");
 const controls = byId("controls");
 const feedback = byId("feedback");
 
+const providerText = { openai: "OpenAI" };
+
 const metricLabels = {
   total_billed: "Facturado",
   total_paid_linked: "Pagos aplicados a facturas",
@@ -20,8 +22,12 @@ const metricLabels = {
   outstanding_balance: "Saldo pendiente",
   overdue_balance: "Saldo vencido",
   collection_ratio: "Cobranza aplicada / facturación",
+  collection_ratio_30_days: "Cobrado dentro de 30 días",
+  average_collection_period_days: "Periodo medio de cobro",
   priority_score: "Índice de prioridad",
   exception_count: "Casos que requieren validación",
+  payment_applications_analyzed: "Aplicaciones de pago analizadas",
+  partial_payment_invoice_count: "Facturas con pago parcial",
 };
 
 const metricTips = {
@@ -30,8 +36,12 @@ const metricTips = {
   outstanding_balance: "Importe por cobrar después de pagos y notas de crédito.",
   overdue_balance: "Parte del saldo pendiente cuyo vencimiento ya pasó.",
   collection_ratio: "Pagos aplicados divididos entre el importe facturado.",
+  collection_ratio_30_days: "Porcentaje cobrado hasta 30 días desde la emisión, usando solo facturas con una ventana completa al corte.",
+  average_collection_period_days: "Promedio ponderado por importe entre emisión y aplicación del pago.",
   priority_score: "Índice de 0 a 100: alta desde 60 y media desde 30.",
   exception_count: "Casos para validar; no representan errores confirmados.",
+  payment_applications_analyzed: "Pagos vinculados a facturas y observables a la fecha de corte.",
+  partial_payment_invoice_count: "Facturas que recibieron pagos, pero aún mantienen saldo.",
 };
 
 const statusLabels = {
@@ -69,6 +79,8 @@ const findingText = {
   TEMPORAL_ANOMALY: "Fecha de pago por validar",
   PAYMENT_OUTSIDE_INVOICE_CUTOFF: "Pago sin factura dentro del corte",
   PAYMENT_BEFORE_ISSUANCE: "Fecha de pago por validar",
+  PAYMENT_LINK_MISMATCH: "Pago asociado a otro cliente o cuenta",
+  CREDIT_NOTE_OUTSIDE_INVOICE_CUTOFF: "Nota de crédito sin factura dentro del corte",
   DOCUMENT_SETTLED: "Documento sin incidencias detectadas",
   SCORING_RULE: "Criterios de priorización aplicados",
 };
@@ -177,8 +189,9 @@ function renderControls() {
 function metricCard(key, value) {
   let text = money(value);
   if (key === "priority_score") text = `${Number(value).toFixed(1)} / 100`;
-  if (key === "collection_ratio") text = percent(value);
-  if (key === "exception_count") text = whole(value);
+  if (["collection_ratio", "collection_ratio_30_days"].includes(key)) text = percent(value);
+  if (key === "average_collection_period_days") text = value == null ? "No disponible" : `${Number(value).toFixed(1)} días`;
+  if (["exception_count", "payment_applications_analyzed", "partial_payment_invoice_count"].includes(key)) text = whole(value);
   return `
     <div class="card" title="${escapeHtml(metricTips[key] || "")}">
       <span>${escapeHtml(metricLabels[key] || key)}</span>
@@ -193,7 +206,11 @@ function metricCards(metrics) {
     "outstanding_balance",
     "overdue_balance",
     "collection_ratio",
+    "collection_ratio_30_days",
+    "average_collection_period_days",
     "priority_score",
+    "payment_applications_analyzed",
+    "partial_payment_invoice_count",
     "exception_count",
   ];
   return `<div class="cards">${preferred.filter((key) => key in metrics).map((key) => metricCard(key, metrics[key])).join("")}</div>`;
@@ -257,6 +274,16 @@ function renderActions(rows) {
           </div>`).join("")}
       </div>
     </section>`;
+}
+
+function renderKpiDefinitions(kpis) {
+  const rows = Object.values(kpis || {}).filter((item) => item?.definition);
+  if (!rows.length) return "";
+  return `
+    <details>
+      <summary>Cómo se calculan los indicadores</summary>
+      <ul>${rows.map((item) => `<li>${escapeHtml(item.definition)}</li>`).join("")}</ul>
+    </details>`;
 }
 
 function renderCustomerInvoices(rows) {
@@ -348,7 +375,7 @@ function renderExceptions(rows, data) {
           escapeHtml(row.document),
           escapeHtml(row.customer),
           row.amount == null ? "—" : money(row.amount),
-          row.paid_at ? dateText(row.paid_at) : "—",
+          row.paid_at || row.issued_at ? dateText(row.paid_at || row.issued_at) : "—",
           escapeHtml(row.recommended_action),
         ]),
       )}
@@ -384,6 +411,7 @@ function render(data) {
   }
   if (data.operation === "reconciliation_exceptions") html += renderExceptions(data.evidence || [], data);
   if (data.recommended_actions?.length) html += renderActions(data.recommended_actions);
+  html += renderKpiDefinitions(data.kpis);
   html += `<details><summary>Detalle técnico e integración (JSON)</summary><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre></details>`;
   content.innerHTML = html;
 }
@@ -424,7 +452,7 @@ async function refreshStatus() {
     const aiBadge = byId("ai-status");
     aiBadge.textContent = data.llm_available ? "Consultas con IA disponibles" : "Consultas con IA no disponibles";
     aiBadge.title = data.llm_available
-      ? `Proveedor: ${data.llm?.provider || "OpenCode Go"} · Modelo: ${data.llm?.model || data.model}`
+      ? `Proveedor: ${providerText[data.llm?.provider] || data.llm?.provider || "OpenAI"} · Modelo: ${data.llm?.model || data.model}`
       : "La configuración debe realizarla un administrador.";
     aiBadge.className = `status ${data.llm_available ? "ready" : "warn"}`;
     const dataBadge = byId("data-status");
@@ -461,7 +489,8 @@ async function uploadDataset() {
     if (!response.ok) throw new Error(errorMessage(data, "Los archivos no son compatibles."));
     const accepted = (data.accepted_tables || []).map((item) => `${item.file}: ${item.records} registros`).join(" · ");
     result.className = "notice success";
-    result.textContent = `${data.message}${accepted ? ` ${accepted}` : ""}`;
+    const warnings = (data.warnings || []).join(" ");
+    result.textContent = `${data.message}${accepted ? ` ${accepted}` : ""}${warnings ? ` Observaciones: ${warnings}` : ""}`;
     await refreshStatus();
     await loadView();
   } catch (error) {
@@ -495,10 +524,8 @@ async function askAgent() {
     const aiGenerated = data.mode === "llm";
     aiBadge.hidden = !aiGenerated;
     answerMode.textContent = aiGenerated
-      ? `${data.llm?.provider || "IA"} · ${data.llm?.model || "modelo configurado"} · cálculos determinísticos`
-      : data.mode === "deterministic_fallback"
-        ? "Respuesta determinística: el proveedor de IA no completó la consulta."
-        : "Respuesta determinística.";
+      ? `${providerText[data.llm?.provider] || data.llm?.provider || "IA"} · ${data.llm?.model || "modelo configurado"} · cálculos determinísticos`
+      : "Respuesta sustentada por las herramientas del agente.";
   } catch (error) {
     answer.classList.add("error");
     answer.textContent = error.message || "No fue posible utilizar la IA.";

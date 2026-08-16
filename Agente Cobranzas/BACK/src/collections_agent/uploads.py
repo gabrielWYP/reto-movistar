@@ -45,6 +45,7 @@ MONEY_COLUMNS = {
     "invoices": {"CHARGE_TOTAL_AMOUNT"},
     "credit_notes": {"MONTO"},
 }
+NULLABLE_DATA_COLUMNS = {"mobile_plant": {"COD_CUENTA"}}
 _FILE_TO_TABLE = {name.lower(): table for table, name in TABLE_FILES.items()}
 
 
@@ -56,12 +57,14 @@ class CsvValidationError(ValueError):
 class UploadReport:
     accepted_tables: list[dict[str, object]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     ready_for_analysis: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return {
             "accepted_tables": self.accepted_tables,
             "errors": self.errors,
+            "warnings": self.warnings,
             "ready_for_analysis": self.ready_for_analysis,
             "message": (
                 "Archivos validados y cargados temporalmente para el análisis."
@@ -141,12 +144,21 @@ def _is_money(value: str) -> bool:
         return False
 
 
+def _date_value(value: str) -> datetime | None:
+    for pattern in ("%Y-%m-%d", "%Y%m%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(value.split(" ")[0], pattern)
+        except ValueError:
+            continue
+    return None
+
+
 def _validate_rows(table: str, rows: list[dict[str, str]]) -> list[str]:
     errors: list[str] = []
     required = TABLE_REQUIREMENTS[table]
     for index, row in enumerate(rows, start=2):
         for column in required:
-            if not row.get(column):
+            if not row.get(column) and column not in NULLABLE_DATA_COLUMNS.get(table, set()):
                 errors.append(f"Fila {index}: {column} está vacío.")
         for column in DATE_COLUMNS.get(table, set()):
             if row.get(column) and not _is_date(row[column]):
@@ -154,6 +166,10 @@ def _validate_rows(table: str, rows: list[dict[str, str]]) -> list[str]:
         for column in MONEY_COLUMNS.get(table, set()):
             if row.get(column) and not _is_money(row[column]):
                 errors.append(f"Fila {index}: {column} no tiene un importe válido.")
+            elif row.get(column):
+                amount = Decimal(row[column].replace(",", "."))
+                if amount < 0 or (table != "invoices" and amount == 0):
+                    errors.append(f"Fila {index}: {column} debe ser mayor que cero.")
         if len(errors) >= 10:
             return errors
     if table == "invoices":
@@ -165,6 +181,82 @@ def _validate_rows(table: str, rows: list[dict[str, str]]) -> list[str]:
         if duplicates:
             errors.append("Existen facturas repetidas; no se cargaron para evitar sobrescrituras.")
     return errors
+
+
+def _validate_relationships(
+    tables: dict[str, list[dict[str, str]]],
+) -> tuple[list[str], list[str]]:
+    """Validate joins without hiding legitimate out-of-cutoff business exceptions."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    invoices = {row["NRO_DOC_FISCAL"].strip(): row for row in tables.get("invoices", [])}
+    unmatched_payments = 0
+    temporal_payments = 0
+    for payment in tables.get("payments", []):
+        invoice = invoices.get(payment["FACTURA_AFECTADA"].strip())
+        if invoice is None:
+            unmatched_payments += 1
+            continue
+        if (
+            payment["RAZON_SOCIAL"].strip() != invoice["RAZON_SOCIAL"].strip()
+            or payment["COD_CUENTA"].strip() != invoice["COD_CUENTA"].strip()
+        ):
+            errors.append(
+                "Un pago asociado a una factura no coincide en cliente o cuenta; "
+                "el paquete no se cargó para evitar una aplicación incorrecta."
+            )
+            break
+        paid_at = _date_value(payment["FECHA_PAGO"])
+        issued_at = _date_value(invoice["FECHA_EMISION"])
+        if paid_at is not None and issued_at is not None and paid_at < issued_at:
+            temporal_payments += 1
+
+    unmatched_credits = sum(
+        row["FACTURA_AFECTADA"].strip() not in invoices for row in tables.get("credit_notes", [])
+    )
+    invalid_due_dates = sum(
+        (due := _date_value(row["FECHA_VTO"])) is not None
+        and (issued := _date_value(row["FECHA_EMISION"])) is not None
+        and due < issued
+        for row in tables.get("invoices", [])
+    )
+    zero_value_invoices = sum(
+        Decimal(row["CHARGE_TOTAL_AMOUNT"].replace(",", ".")) == 0
+        for row in tables.get("invoices", [])
+    )
+    mobile_rows_without_account = sum(
+        not row.get("COD_CUENTA") for row in tables.get("mobile_plant", [])
+    )
+    if unmatched_payments:
+        warnings.append(
+            f"{unmatched_payments} pagos apuntan a facturas no incluidas; se analizarán "
+            "como casos para validar, sin asociarlos a otra factura."
+        )
+    if temporal_payments:
+        warnings.append(
+            f"{temporal_payments} aplicaciones tienen fecha anterior a la emisión; se "
+            "conservarán como excepciones y no ingresarán a los KPIs de plazo de cobro."
+        )
+    if unmatched_credits:
+        warnings.append(
+            f"{unmatched_credits} notas de crédito apuntan a facturas no incluidas; se "
+            "reportarán como casos para validar."
+        )
+    if invalid_due_dates:
+        warnings.append(
+            f"{invalid_due_dates} facturas vencen antes de su emisión; revisa las fechas de origen."
+        )
+    if zero_value_invoices:
+        warnings.append(
+            f"{zero_value_invoices} facturas tienen importe cero; se conservan para trazabilidad "
+            "y se excluyen de los KPIs que requieren facturación positiva."
+        )
+    if mobile_rows_without_account:
+        warnings.append(
+            f"{mobile_rows_without_account} registros de planta móvil no tienen cuenta; no se "
+            "usan para relacionar facturas o pagos."
+        )
+    return errors, warnings
 
 
 def load_uploaded_csvs(
@@ -212,6 +304,13 @@ def load_uploaded_csvs(
         )
         report.accepted_tables.clear()
         return None, report
+
+    relationship_errors, relationship_warnings = _validate_relationships(tables)
+    if relationship_errors:
+        report.errors.extend(relationship_errors)
+        report.accepted_tables.clear()
+        return None, report
+    report.warnings.extend(relationship_warnings)
 
     dataset = SoniaDataset(
         customers=tables.get("customers", []),

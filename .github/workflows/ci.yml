@@ -127,6 +127,14 @@ jobs:
           docker build --file back/Dockerfile --tag sonia-back:ci .
           docker build --file front/Dockerfile --tag sonia-front:ci .
 
+      - name: Validate independent Collections images
+        run: |
+          docker compose --file "Agente Cobranzas/compose.yaml" config --quiet
+          docker build --file "Agente Cobranzas/BACK/Dockerfile" \
+            --tag sonia-collections-back:ci .
+          docker build --file "Agente Cobranzas/FRONT/Dockerfile" \
+            --tag sonia-collections-front:ci .
+
       - name: Verify compatibility image
         run: |
           set -euo pipefail
@@ -299,13 +307,13 @@ jobs:
             'import json,sys; payload=json.loads(sys.argv[1]); assert payload["ready_for_analysis"]; assert len(payload["accepted_tables"]) == 6' \
             "${collections_upload}"
 
-          collections_query="$(curl --fail --silent --show-error \
+          collections_query_status="$(curl --silent --show-error \
+            --output /tmp/collections-query.json \
+            --write-out '%{http_code}' \
             --request POST http://127.0.0.1:18081/api/collections/query \
             --header 'content-type: application/json' \
             --data '{"question":"Resume la cartera","as_of_date":"2026-08-07"}')"
-          python -c \
-            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["mode"] == "deterministic"; assert payload["tool_used"] == "portfolio_snapshot"' \
-            "${collections_query}"
+          test "${collections_query_status}" = "503"
 
           test "$(docker inspect "$(docker compose ps --quiet back)" \
             --format '{{.Config.User}}')" = "1001:1001"

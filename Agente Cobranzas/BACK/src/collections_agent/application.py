@@ -9,8 +9,7 @@ from typing import Any
 
 from .agent import ask, dispatch, tool_definitions, validate_arguments
 from .config import CollectionsSettings
-from .llm_runtime import OpenCodeRuntime
-from .prompting import prompt_metadata
+from .llm_runtime import OpenAIRuntime
 from .service import CollectionsService
 from .uploads import load_uploaded_csvs
 
@@ -25,10 +24,10 @@ class CollectionsBackend:
         *,
         service: CollectionsService | None = None,
         settings: CollectionsSettings | None = None,
-        runtime: OpenCodeRuntime | None = None,
+        runtime: OpenAIRuntime | None = None,
     ) -> None:
         self._settings = settings or CollectionsSettings.from_environment()
-        self._runtime = runtime or OpenCodeRuntime(self._settings)
+        self._runtime = runtime or OpenAIRuntime(self._settings)
         self._service = service
         self._dataset_source = "injected" if service is not None else None
         self._dataset_error: str | None = None
@@ -113,27 +112,10 @@ class CollectionsBackend:
         return dispatch(self.service(), operation, validated, as_of_date)
 
     def query(self, question: str, as_of_date: str | None = None) -> dict[str, Any]:
-        """Query OpenCode with a deterministic fallback and structured telemetry."""
+        """Query OpenAI while keeping all calculations inside deterministic tools."""
         started_at = perf_counter()
         service = self.service()
-        try:
-            result = ask(service, question, as_of_date, self._runtime)
-        except RuntimeError as error:
-            if not self._runtime.available:
-                raise
-            logger.warning(
-                "collections_llm_fallback",
-                extra={
-                    "provider": self._runtime.metadata()["provider"],
-                    "model": self._runtime.metadata()["model"],
-                    "latency_ms": round((perf_counter() - started_at) * 1000, 3),
-                    "error_type": type(error).__name__,
-                },
-            )
-            result = ask(service, question, as_of_date, None)
-            result["mode"] = "deterministic_fallback"
-            result["runtime_warning"] = str(error)
-            result["prompt"] = prompt_metadata()
+        result = ask(service, question, as_of_date, self._runtime)
 
         logger.info(
             "collections_query_completed",

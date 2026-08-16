@@ -1,57 +1,95 @@
 # Agente de Cobranzas y Recaudación · SON-IA
 
-Módulo independiente para reconstruir la cartera B2B, priorizar gestiones de
-cobro y detectar aplicaciones de pago que requieren validación. Los cálculos
-financieros se ejecutan en Python; OpenCode Go interpreta la intención, selecciona
-tools y redacta respuestas sustentadas en evidencia estructurada.
+Módulo independiente que reconstruye la cartera B2B, prioriza gestiones de
+cobro y detecta excepciones de aplicación documental. Python calcula todos los
+importes e indicadores; OpenAI interpreta la pregunta, selecciona una o más
+herramientas cerradas y explica únicamente resultados estructurados.
 
-## Arquitectura
-
-```text
-Browser
-  ↓
-FRONT: Nginx + interfaz estática humanizada
-  ↓ /api/collections/*
-BACK: FastAPI
-  ↓
-CollectionsBackend → OpenCode/dispatch → CollectionsService
-                                          ↓
-                       ledger + reglas + dataset validado
-                                          ↓
-                         AgentResponse 1.0 + evidencia
-```
+## Estructura
 
 ```text
 Agente Cobranzas/
-├── BACK/     paquete `collections_agent`, API y pruebas
-├── FRONT/    interfaz estática y contenedor Nginx
-├── data/     datos locales ignorados por Git e imágenes
+├── BACK/                 FastAPI, tools, reglas, contrato y pruebas
+├── FRONT/                interfaz estática humanizada
+├── DEPLOY/kubernetes/    frontend y backend en pods separados
+├── compose.yaml          ejecución independiente en dos servicios
 └── README.md
 ```
 
-## Capacidades y tools
+La implementación vive aquí. `back/` y `front/` de la raíz contienen solo el
+router y los recursos mínimos que permiten publicarla junto con SON-IA.
 
-| Tool | Resultado determinístico |
+## Capacidades
+
+- cartera global y por cliente;
+- trazabilidad factura → pagos → notas de crédito → saldo;
+- saldo pendiente, saldo vencido, días de atraso y antigüedad;
+- facturas vencidas y pagos parciales;
+- priorización reproducible de clientes;
+- aplicaciones de pago y casos que requieren revisión;
+- carga atómica de hasta seis CSV compatibles;
+- preguntas en lenguaje natural con OpenAI y tools;
+- contrato JSON `1.1` reutilizable por Supervisor y BI.
+
+No realiza conciliación bancaria: el dataset no contiene extractos ni marcas
+de tiempo bancarias. El alcance actual es aplicación documental de pagos.
+
+## Indicadores del reto
+
+- **Cobranza aplicada / facturación:** pagos vinculados observados al corte
+  divididos entre facturación.
+- **Cobrado dentro de 30 días:** pagos aplicados desde la emisión hasta el día
+  30 inclusive, divididos entre facturas que ya tuvieron una ventana completa
+  de 30 días al corte. Las sobreaplicaciones no inflan el numerador.
+- **Periodo medio de cobro:** días entre emisión y pago, ponderados por el
+  importe aplicado. Se excluyen pagos anteriores a la emisión y cada factura se
+  limita a su importe facturado.
+
+Cada KPI devuelve valor, unidad, definición y población utilizada dentro de
+`kpis`. Los valores de acceso rápido también están en `metrics`.
+
+## Tools determinísticas
+
+| Tool | Resultado |
 |---|---|
-| `portfolio_snapshot` | KPIs globales y antigüedad de la deuda. |
-| `customer_snapshot` | Situación de cobranza de un cliente. |
-| `invoice_trace` | Factura, pagos aplicados, saldo y estados. |
-| `collection_priorities` | Ranking explicable para gestión. |
-| `reconciliation_exceptions` | Casos de aplicación documental que requieren validación. |
+| `portfolio_snapshot` | KPIs, saldos, pagos y antigüedad global. |
+| `customer_snapshot` | Situación, prioridad y facturas de un cliente. |
+| `invoice_trace` | Pagos, créditos, saldo, vencimiento y evidencia documental. |
+| `collection_priorities` | Ranking explicable con componentes del índice. |
+| `reconciliation_exceptions` | Aplicaciones y documentos que requieren revisión. |
 
-Todas las respuestas financieras incluyen contrato estable, fecha de corte,
-métricas, hallazgos, acciones y evidencia. El agente no afirma conciliación
-bancaria porque el dataset no contiene extractos bancarios.
+Las reglas de antigüedad, tolerancia y prioridad están centralizadas en
+`BACK/src/collections_agent/rules.py`.
 
-## Reglas de negocio versionadas
+## OpenAI y control de costo
 
-`BACK/src/collections_agent/rules.py` es la fuente ejecutable de los tramos de
-antigüedad, tolerancia y prioridad. El índice de prioridad pondera monto vencido
-(45%), mayor atraso (30%), proporción vencida (15%) y concentración en cartera
-(10%). Prioridad alta empieza en 60 puntos y media en 30. Estos valores son
-explicables y deben revisarse con negocio antes de un uso productivo.
+`OPENAI_API_KEY` se inyecta únicamente en runtime. El SDK oficial usa Responses
+API, `gpt-5.6-terra` y razonamiento `low` por defecto. El modelo recibe solo
+schemas y evidencia compacta, nunca CSV completos. Se permiten tres llamadas a
+tools como máximo y 700 tokens de salida por respuesta, ambos configurables.
 
-## API pública
+Sin clave, las cinco vistas y endpoints determinísticos siguen disponibles; el
+endpoint conversacional informa que un administrador debe configurar OpenAI.
+No existe enrutamiento por palabras clave que se presente como agente de IA.
+
+Variables:
+
+- secret: `OPENAI_API_KEY`;
+- configuración: `SONIA_COLLECTIONS_MODEL`,
+  `SONIA_COLLECTIONS_REASONING_EFFORT`, `SONIA_COLLECTIONS_MAX_TOOL_CALLS`,
+  `SONIA_COLLECTIONS_MAX_OUTPUT_TOKENS`, límites de carga y dataset opcional;
+- reglas de negocio: `rules.py`, versionado y documentado.
+
+## Carga de CSV
+
+La carga valida nombre/estructura, encabezados, columnas obligatorias, fechas,
+importes positivos, duplicados y relaciones factura-pago. Un conflicto de
+cliente o cuenta rechaza el paquete completo. Pagos o notas que apuntan a
+facturas fuera del corte se aceptan como excepciones explícitas, nunca se
+asocian silenciosamente a otro documento. El dataset activo solo se reemplaza
+cuando todo el paquete es compatible y permanece en memoria.
+
+## API
 
 - `GET /health`
 - `GET /api/collections/status`
@@ -64,77 +102,38 @@ explicables y deben revisarse con negocio antes de un uso productivo.
 - `POST /api/collections/query`
 - `GET /api/docs`
 
-La carga acepta únicamente CSV compatibles. Valida nombres de tabla, columnas,
-tipos, límites y relaciones mínimas antes de reemplazar el dataset activo. Una
-carga inválida no mezcla ni sustituye silenciosamente la información anterior.
+## Ejecutar independientemente
 
-## Ejecución local
-
-El despliegue soportado usa el `compose.yaml` raíz: un contenedor backend para
-los tres agentes y un contenedor frontend para todas las interfaces.
+Desde la raíz del repositorio:
 
 ```bash
-docker compose up --build --wait
+docker compose --file "Agente Cobranzas/compose.yaml" up --build --wait
 ```
 
-Para desarrollar únicamente el paquete Python:
+Interfaz: `http://localhost:8081`. Para usar preguntas con IA, define
+`OPENAI_API_KEY` en un `.env` local no versionado o en el secret de Kubernetes.
+
+Para desarrollo del backend:
 
 ```powershell
 cd "Agente Cobranzas\BACK"
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pytest -ra
 .\.venv\Scripts\python.exe -m collections_agent
 ```
 
-## OpenCode Go y control de costo
+## Integración futura
 
-`OPENCODE_KEY` se inyecta en runtime y nunca se versiona. El endpoint compatible
-con OpenAI usa `deepseek-v4-flash` por defecto. Cada consulta realiza como máximo
-una llamada de selección y una de interpretación; la selección debe contener
-exactamente una tool autorizada. Los límites de salida se configuran mediante
-variables `SONIA_COLLECTIONS_*`.
+El Supervisor puede invocar `CollectionsBackend.execute_tool()` o `query()` sin
+depender del frontend. Los resultados contienen estado, métricas, KPIs,
+hallazgos, alertas, evidencia y acciones recomendadas. No se implementan aquí
+Facturación, BI, Control Tower ni orquestación.
 
-El modelo nunca recibe el dataset completo ni calcula saldos. Recibe solamente
-evidencia compacta del resultado determinístico. Sin clave o ante un fallo del
-proveedor, las rutas y tools siguen disponibles y la respuesta indica el modo
-determinístico; la insignia `Hecho con IA` solo aparece en modo `llm`.
+## Limitaciones
 
-## Guardrails y observabilidad
-
-- La selección debe producir exactamente una de las cinco tools autorizadas.
-- La fecha de corte enviada por la interfaz prevalece sobre la sugerida por el modelo.
-- Identificadores, límites y argumentos desconocidos se validan antes del dispatch.
-- No se permiten cálculos del modelo, código arbitrario, predicciones ni causalidad.
-- La conciliación es documental y las excepciones no se presentan como errores confirmados.
-- Cada etapa registra proveedor, modelo, latencia y tokens cuando el proveedor los informa.
-- Los logs nunca incluyen prompts, CSV, evidencia completa, API keys ni cabeceras de autorización.
-
-`POST /api/collections/query` devuelve `mode`, `tool_used`, argumentos validados,
-resultado determinístico, metadata del prompt y consumo de tokens. En un fallo del
-proveedor devuelve `deterministic_fallback`, sin marcar la respuesta como generada por IA.
-
-## Integración con SON-IA
-
-La implementación principal permanece en esta carpeta. La imagen compartida
-`back/Dockerfile` instala `collections_agent` y monta su router; la imagen
-`front/Dockerfile` publica este frontend bajo `/agents/collections/`. No existen
-Deployments ni contenedores productivos específicos por agente. El
-Supervisor podrá consumir `CollectionsBackend.execute_tool()` o `query()` sin
-depender del frontend.
-
-## Pruebas
-
-```powershell
-cd "Agente Cobranzas\BACK"
-.\.venv\Scripts\python.exe -m pytest -ra
-```
-
-Las pruebas con el ZIP oficial se habilitan mediante `SONIA_DATASET`. El dataset
-no se versiona, no se incorpora a imágenes y permanece fuera de prompts.
-
-## Límites
-
-- Trabaja con datos anonimizados del reto, no con sistemas corporativos reales.
-- La conciliación es documental factura-pago, no bancaria.
-- No ejecuta cobros, comunicaciones ni aplicaciones contables.
-- Las recomendaciones requieren validación humana antes de cualquier acción.
+- datos anonimizados del reto, no sistemas corporativos en tiempo real;
+- sin extractos bancarios ni tiempo real de identificación/conciliación;
+- no predice promesas de pago ni causas de mora;
+- no ejecuta cobros, comunicaciones ni asientos contables;
+- las recomendaciones requieren validación humana.

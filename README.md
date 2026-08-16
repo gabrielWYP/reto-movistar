@@ -75,10 +75,10 @@ El Agente de Cobranzas se abre desde su tarjeta o directamente en
 `/api/collections/*`; los CSV validados también permanecen en RAM y no se
 mezclan con el dataset anterior cuando una carga es incompatible.
 
-Las consultas BI y Cobranzas usan OpenCode Go cuando `OPENCODE_KEY` está
-disponible en el backend. Cada agente usa `deepseek-v4-flash` por defecto,
-exige una tool cerrada, calcula en Python y redacta solo desde evidencia
-compacta. La clave nunca se envía al frontend ni se incluye en la imagen.
+BI usa OpenCode Go cuando `OPENCODE_KEY` está disponible. Cobranzas usa el SDK
+oficial de OpenAI y Responses API cuando el backend recibe `OPENAI_API_KEY`.
+Ambos agentes ejecutan los cálculos en Python y solo entregan evidencia compacta
+al modelo. Las claves nunca se envían al frontend ni se incluyen en la imagen.
 
 ## Ejecutar solo el backend
 

@@ -1,18 +1,13 @@
 import os
+import sys
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from collections_agent.agent import (
-    TOOL_NAMES,
-    ask,
-    deterministic_route,
-    tool_schemas,
-    validate_arguments,
-)
+from collections_agent.agent import TOOL_NAMES, ask, tool_schemas, validate_arguments
 from collections_agent.application import CollectionsBackend
-from collections_agent.config import CollectionsSettings
-from collections_agent.llm_runtime import OpenCodeRuntime
+from collections_agent.llm_runtime import OpenAIRuntime
 from collections_agent.service import CollectionsService
 from collections_agent.uploads import load_uploaded_csvs
 from collections_agent.web_app import route_payload
@@ -21,20 +16,31 @@ DATASET_VALUE = os.environ.get("SONIA_DATASET")
 DATASET = Path(DATASET_VALUE) if DATASET_VALUE else None
 
 
+def _invoice_csv(*rows: bytes) -> bytes:
+    return (
+        b"RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|NRO_DOC_FISCAL|"
+        b"FECHA_EMISION|FECHA_VTO|CHARGE_TOTAL_AMOUNT\n" + b"".join(rows)
+    )
+
+
+def _payment_csv(*rows: bytes) -> bytes:
+    return b"RAZON_SOCIAL|COD_CUENTA|FACTURA_AFECTADA|FECHA_PAGO|MONTO_PAGADO\n" + b"".join(rows)
+
+
 class CollectionsContractTests(unittest.TestCase):
     @staticmethod
     def service_from_csv() -> CollectionsService:
-        invoices = (
-            b"RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|NRO_DOC_FISCAL|"
-            b"FECHA_EMISION|FECHA_VTO|CHARGE_TOTAL_AMOUNT\n"
-            b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.50\n"
-        )
-        payments = (
-            b"RAZON_SOCIAL|COD_CUENTA|FACTURA_AFECTADA|FECHA_PAGO|MONTO_PAGADO\n"
-            b"CLIENT_TEST|ACC-1|FAC-001|2026-07-15|40.50\n"
-        )
         dataset, report = load_uploaded_csvs(
-            [("facturas.csv", invoices), ("pagos.csv", payments)],
+            [
+                (
+                    "facturas.csv",
+                    _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.50\n"),
+                ),
+                (
+                    "pagos.csv",
+                    _payment_csv(b"CLIENT_TEST|ACC-1|FAC-001|2026-07-15|40.50\n"),
+                ),
+            ],
             max_files=6,
             max_bytes=1_000_000,
         )
@@ -42,122 +48,150 @@ class CollectionsContractTests(unittest.TestCase):
             raise AssertionError("No se pudo construir el dataset de prueba.")
         return CollectionsService.from_dataset(dataset)
 
-    def test_opencode_runtime_exposes_only_the_five_deterministic_tools(self):
+    def test_openai_runtime_exposes_only_closed_deterministic_tools(self):
         schemas = tool_schemas()
         self.assertEqual(len(schemas), 5)
         self.assertEqual({schema["name"] for schema in schemas}, TOOL_NAMES)
+        self.assertTrue(all(schema["strict"] for schema in schemas))
 
-    def test_validated_csv_package_builds_an_isolated_service(self):
-        result = self.service_from_csv().invoice_trace("FAC-001", "2026-08-07")
-        self.assertEqual(result["metrics"]["outstanding_balance"], 60.0)
+    def test_runtime_uses_official_sdk_and_environment_secret(self):
+        observed: dict[str, object] = {}
 
-    def test_opencode_selects_exactly_one_tool_and_interprets_compact_evidence(self):
-        responses = [
-            {
-                "choices": [
-                    {
-                        "message": {
-                            "tool_calls": [
-                                {
-                                    "id": "call-1",
-                                    "type": "function",
-                                    "function": {
-                                        "name": "portfolio_snapshot",
-                                        "arguments": '{"as_of_date":"2026-08-01"}',
-                                    },
-                                }
-                            ]
-                        }
-                    }
-                ],
-                "usage": {"prompt_tokens": 100, "completion_tokens": 20},
-            },
-            {
-                "choices": [
-                    {
-                        "message": {
-                            "content": "La cartera mantiene saldo pendiente respaldado por el corte."
-                        }
-                    }
-                ],
-                "usage": {"prompt_tokens": 80, "completion_tokens": 18},
-            },
-        ]
-        settings = CollectionsSettings.from_environment()
-        post = Mock(side_effect=responses)
-        runtime = OpenCodeRuntime(settings, post=post)
-        with patch.dict(os.environ, {"OPENCODE_KEY": "test-only"}, clear=True):
-            result = ask(self.service_from_csv(), "Resume la cartera", "2026-08-07", runtime)
+        class FakeResponse:
+            output_text = "OK"
 
-        self.assertEqual(result["tool_used"], "portfolio_snapshot")
-        self.assertEqual(result["tool_arguments"]["as_of_date"], "2026-08-07")
-        self.assertEqual(result["mode"], "llm")
-        self.assertEqual(result["usage"]["prompt_tokens"], 180)
-        second_payload = post.call_args_list[1].args[0]
-        self.assertIn("Resultado:", second_payload["messages"][1]["content"])
-        self.assertNotIn("OPENAI_API_KEY", str(second_payload))
+            @staticmethod
+            def model_dump(*, mode: str) -> dict[str, object]:
+                observed["dump_mode"] = mode
+                return {"output": [{"type": "message", "content": []}]}
 
-    def test_runtime_rejects_ungrounded_model_response(self):
-        response = {"choices": [{"message": {"content": "Respuesta sin tool"}}]}
-        runtime = OpenCodeRuntime(post=Mock(return_value=response))
+        class FakeResponses:
+            @staticmethod
+            def create(**payload: object) -> FakeResponse:
+                observed["payload"] = payload
+                return FakeResponse()
+
+        class FakeOpenAI:
+            def __init__(self, **options: object) -> None:
+                observed["options"] = options
+                self.responses = FakeResponses()
+
+        fake_module = types.SimpleNamespace(OpenAI=FakeOpenAI)
+        runtime = OpenAIRuntime()
         with (
-            patch.dict(os.environ, {"OPENCODE_KEY": "test-only"}, clear=True),
-            self.assertRaisesRegex(RuntimeError, "exactamente una tool"),
+            patch.dict(os.environ, {"OPENAI_API_KEY": "test-only"}, clear=True),
+            patch.dict(sys.modules, {"openai": fake_module}),
         ):
-            runtime.select_tool("Resume la cartera", "2026-08-07")
+            response = runtime.create(
+                [{"role": "user", "content": "Resume la cartera"}],
+                require_tool=True,
+                stage="test",
+            )
 
-    def test_runtime_retries_an_incomplete_selection_and_accounts_for_usage(self):
+        self.assertEqual(observed["options"]["api_key"], "test-only")
+        self.assertEqual(observed["payload"]["tool_choice"], "required")
+        self.assertEqual(response["output_text"], "OK")
+
+    def test_validated_csv_builds_service_and_challenge_kpis(self):
+        service = self.service_from_csv()
+        result = service.portfolio_snapshot("2026-08-07")
+        self.assertEqual(result["metrics"]["outstanding_balance"], 60.0)
+        self.assertEqual(result["metrics"]["collection_ratio_30_days"], 0.403)
+        self.assertEqual(result["metrics"]["average_collection_period_days"], 14.0)
+        self.assertEqual(result["kpis"]["collection_ratio_30_days"]["eligible_invoice_count"], 1)
+
+    def test_historical_cutoff_excludes_future_payments(self):
+        dataset, report = load_uploaded_csvs(
+            [
+                (
+                    "facturas.csv",
+                    _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.00\n"),
+                ),
+                (
+                    "pagos.csv",
+                    _payment_csv(
+                        b"CLIENT_TEST|ACC-1|FAC-001|2026-07-15|40.00\n",
+                        b"CLIENT_TEST|ACC-1|FAC-001|2026-08-15|60.00\n",
+                    ),
+                ),
+            ],
+            6,
+            1_000_000,
+        )
+        self.assertTrue(report.ready_for_analysis)
+        assert dataset is not None
+        service = CollectionsService.from_dataset(dataset)
+        july = service.invoice_trace("FAC-001", "2026-07-31")
+        august = service.invoice_trace("FAC-001", "2026-08-31")
+        self.assertEqual(july["metrics"]["paid"], 40.0)
+        self.assertEqual(july["metrics"]["outstanding_balance"], 60.0)
+        self.assertEqual(august["metrics"]["outstanding_balance"], 0.0)
+
+    def test_openai_selects_tools_and_explains_compact_evidence(self):
         responses = [
             {
-                "choices": [
+                "output": [
                     {
-                        "finish_reason": "length",
-                        "message": {"content": ""},
-                    }
+                        "type": "function_call",
+                        "call_id": "call-1",
+                        "name": "customer_snapshot",
+                        "arguments": '{"customer_id":"CLIENT_TEST"}',
+                    },
+                    {
+                        "type": "function_call",
+                        "call_id": "call-2",
+                        "name": "collection_priorities",
+                        "arguments": '{"limit":5}',
+                    },
                 ],
-                "usage": {
-                    "prompt_tokens": 100,
-                    "completion_tokens": 400,
-                    "total_tokens": 500,
-                },
+                "usage": {"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
             },
             {
-                "choices": [
-                    {
-                        "finish_reason": "tool_calls",
-                        "message": {
-                            "tool_calls": [
-                                {
-                                    "id": "call-retry",
-                                    "type": "function",
-                                    "function": {
-                                        "name": "portfolio_snapshot",
-                                        "arguments": "{}",
-                                    },
-                                }
-                            ]
-                        },
-                    }
-                ],
-                "usage": {
-                    "prompt_tokens": 110,
-                    "completion_tokens": 30,
-                    "total_tokens": 140,
-                },
+                "output": [{"type": "message", "content": []}],
+                "output_text": "El cliente mantiene saldo vencido y debe priorizarse con evidencia.",
+                "usage": {"input_tokens": 80, "output_tokens": 18, "total_tokens": 98},
             },
         ]
-        post = Mock(side_effect=responses)
-        runtime = OpenCodeRuntime(post=post)
+        create_response = Mock(side_effect=responses)
+        runtime = OpenAIRuntime(create_response=create_response)
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only"}, clear=True):
+            result = ask(
+                self.service_from_csv(),
+                "Analiza CLIENT_TEST y dime si debería priorizarlo.",
+                "2026-08-07",
+                runtime,
+            )
 
-        with patch.dict(os.environ, {"OPENCODE_KEY": "test-only"}, clear=True):
-            selected = runtime.select_tool("Resume la cartera", "2026-08-07")
+        self.assertEqual(result["tools_used"], ["customer_snapshot", "collection_priorities"])
+        self.assertEqual(result["agent_response"]["operation"], "multi_tool_analysis")
+        self.assertEqual(result["mode"], "llm")
+        self.assertEqual(result["usage"]["total_tokens"], 218)
+        self.assertEqual(create_response.call_args_list[0].args[0]["tool_choice"], "required")
+        self.assertEqual(create_response.call_args_list[1].args[0]["tool_choice"], "auto")
+        self.assertNotIn("test-only", str(create_response.call_args_list))
 
-        self.assertEqual(selected["tool_name"], "portfolio_snapshot")
-        self.assertEqual(selected["usage"]["total_tokens"], 640)
-        self.assertEqual(post.call_count, 2)
-        self.assertEqual(post.call_args_list[0].args[0]["max_tokens"], 400)
-        self.assertEqual(post.call_args_list[1].args[0]["max_tokens"], 800)
-        self.assertEqual(post.call_args_list[1].args[0]["tool_choice"], "auto")
+    def test_natural_language_requires_openai_instead_of_keyword_routing(self):
+        runtime = OpenAIRuntime(create_response=Mock())
+        with (
+            patch.dict(os.environ, {"OPENAI_API_KEY": ""}, clear=True),
+            self.assertRaisesRegex(RuntimeError, "OPENAI_API_KEY"),
+        ):
+            ask(self.service_from_csv(), "Resume la cartera", "2026-08-07", runtime)
+
+    def test_openai_response_without_tool_is_rejected(self):
+        runtime = OpenAIRuntime(
+            create_response=Mock(
+                return_value={
+                    "output": [{"type": "message", "content": []}],
+                    "output_text": "Respuesta sin evidencia",
+                }
+            )
+        )
+        with (
+            patch.dict(os.environ, {"OPENAI_API_KEY": "test-only"}, clear=True),
+            self.assertRaisesRegex(RuntimeError, "no seleccionó"),
+        ):
+            ask(self.service_from_csv(), "Resume la cartera", "2026-08-07", runtime)
 
     def test_argument_validation_rejects_unknown_fields_and_overrides_cutoff(self):
         with self.assertRaisesRegex(ValueError, "parámetros no autorizados"):
@@ -169,23 +203,49 @@ class CollectionsContractTests(unittest.TestCase):
         )
         self.assertEqual(result, {"limit": 5, "as_of_date": "2026-08-07"})
 
-    def test_fallback_does_not_invent_an_identifier_from_regular_words(self):
-        tool, arguments = deterministic_route(
-            "¿Qué cliente tiene mayor saldo vencido?", "2026-08-07"
-        )
-        self.assertEqual(tool, "portfolio_snapshot")
-        self.assertNotIn("customer_id", arguments)
-
-    def test_incompatible_csv_does_not_replace_the_backend_dataset(self):
+    def test_incompatible_csv_does_not_replace_backend_dataset(self):
         backend = CollectionsBackend()
         report = backend.upload_dataset([("desconocido.csv", b"NOMBRE|MONTO\nEjemplo|10\n")])
         self.assertFalse(report["ready_for_analysis"])
         self.assertFalse(backend.configured)
 
-    def test_opencode_mode_requires_the_shared_runtime_secret(self):
-        backend = CollectionsBackend()
-        with patch.dict(os.environ, {"OPENCODE_KEY": ""}, clear=True):
-            self.assertFalse(backend.llm_available)
+    def test_csv_rejects_conflicting_payment_relationship(self):
+        dataset, report = load_uploaded_csvs(
+            [
+                (
+                    "facturas.csv",
+                    _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.00\n"),
+                ),
+                (
+                    "pagos.csv",
+                    _payment_csv(b"OTHER_CLIENT|ACC-9|FAC-001|2026-07-15|40.00\n"),
+                ),
+            ],
+            6,
+            1_000_000,
+        )
+        self.assertIsNone(dataset)
+        self.assertFalse(report.ready_for_analysis)
+        self.assertIn("no coincide", report.errors[0])
+
+    def test_csv_reports_unmatched_payment_without_silent_mixing(self):
+        dataset, report = load_uploaded_csvs(
+            [
+                (
+                    "facturas.csv",
+                    _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.00\n"),
+                ),
+                (
+                    "pagos.csv",
+                    _payment_csv(b"CLIENT_TEST|ACC-1|FAC-999|2026-07-15|40.00\n"),
+                ),
+            ],
+            6,
+            1_000_000,
+        )
+        self.assertIsNotNone(dataset)
+        self.assertTrue(report.ready_for_analysis)
+        self.assertIn("facturas no incluidas", report.warnings[0])
 
     def test_six_csv_files_are_loaded_atomically_in_memory(self):
         files = [
@@ -200,14 +260,11 @@ class CollectionsContractTests(unittest.TestCase):
             ),
             (
                 "004_TBL_PAGOS_B2B.csv",
-                b"RAZON_SOCIAL|COD_CUENTA|FACTURA_AFECTADA|FECHA_PAGO|MONTO_PAGADO\n"
-                b"CLIENT_TEST|ACC-1|FAC-001|2026-07-15|40.50\n",
+                _payment_csv(b"CLIENT_TEST|ACC-1|FAC-001|2026-07-15|40.50\n"),
             ),
             (
                 "005_TBL_FACTURAS_B2B.csv",
-                b"RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|NRO_DOC_FISCAL|FECHA_EMISION|"
-                b"FECHA_VTO|CHARGE_TOTAL_AMOUNT\n"
-                b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.50\n",
+                _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.50\n"),
             ),
             (
                 "006_TBL_NOTAS_CREDITO_B2B.csv",
@@ -228,12 +285,14 @@ class CollectionsAgentTests(unittest.TestCase):
         assert DATASET is not None
         return CollectionsService(DATASET)
 
-    def test_portfolio_has_stable_contract_and_known_counts(self):
+    def test_portfolio_has_stable_contract_and_known_challenge_kpis(self):
         response = self.service().portfolio_snapshot("2026-08-07")
-        self.assertEqual(response["contract_version"], "1.0")
+        self.assertEqual(response["contract_version"], "1.1")
         self.assertEqual(response["agent"], "collections")
         self.assertEqual(response["metrics"]["invoice_count"], 3364)
         self.assertEqual(response["metrics"]["unmatched_payment_count"], 74)
+        self.assertEqual(response["metrics"]["collection_ratio_30_days"], 0.5728)
+        self.assertEqual(response["metrics"]["average_collection_period_days"], 19.9)
         self.assertGreater(response["metrics"]["outstanding_balance"], 0)
 
     def test_invoice_trace_reconstructs_document_state(self):
@@ -254,15 +313,10 @@ class CollectionsAgentTests(unittest.TestCase):
         )
         self.assertEqual(
             set(priorities["evidence"][0]["score_components"]),
-            {
-                "overdue_amount",
-                "days_past_due",
-                "overdue_share",
-                "portfolio_concentration",
-            },
+            {"overdue_amount", "days_past_due", "overdue_share", "portfolio_concentration"},
         )
 
-    def test_legacy_routes_still_delegate_to_deterministic_tools(self):
+    def test_legacy_routes_delegate_to_deterministic_tools(self):
         service = self.service()
         status, portfolio = route_payload(service, "/api/portfolio?as_of_date=2026-08-07")
         missing_status, error = route_payload(service, "/api/customer?id=UNKNOWN")

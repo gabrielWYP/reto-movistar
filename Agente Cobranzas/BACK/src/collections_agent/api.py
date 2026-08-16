@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class CollectionsQueryRequest(BaseModel):
-    """Natural-language request interpreted through grounded OpenCode tools."""
+    """Natural-language request interpreted through grounded OpenAI tools."""
 
     model_config = ConfigDict(extra="forbid")
 

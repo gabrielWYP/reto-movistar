@@ -34,6 +34,11 @@ disponibilidad sin revelar credenciales. Si el proveedor no está configurado o
 falla, las tools determinísticas permanecen operativas y la respuesta indica el
 modo de fallback.
 
+`POST /api/collections/query` usa el SDK oficial de OpenAI y Responses API
+cuando el proceso recibe `OPENAI_API_KEY`. Sin esa clave, las rutas
+determinísticas de Cobranzas siguen operativas y la consulta en lenguaje natural
+devuelve una indicación de configuración, sin simular IA mediante palabras clave.
+
 Los módulos integrados viven en `src/sonia/agents/` o en los paquetes hermanos
 `Agente BI/BACK/src/bi_agent` y
 `Agente Cobranzas/BACK/src/collections_agent`. Para ejecutar

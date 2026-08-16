@@ -1,13 +1,14 @@
-"""Closed Collections agent boundary for routing, validation and narration."""
+"""Closed Collections agent boundary for tool validation and orchestration."""
 
 from __future__ import annotations
 
-import re
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+from .contracts import CONTRACT_VERSION
 from .prompting import prompt_metadata
 from .service import CollectionsService
 
@@ -22,8 +23,6 @@ TOOL_NAMES = {
 
 @dataclass(frozen=True, slots=True)
 class ToolDefinition:
-    """Human-readable tool metadata exposed through the status endpoint."""
-
     name: str
     description: str
     parameters: dict[str, Any]
@@ -31,90 +30,119 @@ class ToolDefinition:
 
 @dataclass(frozen=True, slots=True)
 class AgentResult:
-    """Stable response envelope shared by the frontend and future supervisor."""
+    """Stable conversational envelope with full deterministic tool outputs."""
 
     answer: str
-    tool_name: str
-    tool_arguments: dict[str, Any]
-    agent_response: dict[str, Any]
-    mode: str
+    tool_results: list[dict[str, Any]]
     usage: dict[str, int]
+    llm: dict[str, str]
+    as_of_date: str | None
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the public agent response."""
+        executed = [item for item in self.tool_results if "result" in item]
+        tools_used = [str(item["tool"]) for item in executed]
+        primary = executed[0] if executed else None
+        if len(executed) == 1:
+            structured = executed[0]["result"]
+        else:
+            structured = {
+                "contract_version": CONTRACT_VERSION,
+                "agent": "collections",
+                "operation": "multi_tool_analysis" if executed else "clarification_required",
+                "as_of_date": self.as_of_date,
+                "results": [item["result"] for item in executed],
+            }
         return {
             "answer": self.answer,
-            "tool_used": self.tool_name,
-            "tool_arguments": self.tool_arguments,
-            "agent_response": self.agent_response,
-            "mode": self.mode,
+            "mode": "llm",
+            "tools_used": tools_used,
+            "tool_results": self.tool_results,
+            "tool_used": primary["tool"] if primary else None,
+            "tool_arguments": primary["arguments"] if primary else {},
+            "agent_response": structured,
             "usage": self.usage,
+            "llm": self.llm,
+            "prompt": prompt_metadata(),
         }
 
 
 def tool_schemas() -> list[dict[str, Any]]:
     """Expose only the five deterministic Collections calculations."""
-    date_property = {"type": "string", "description": "Fecha ISO YYYY-MM-DD opcional."}
+    date_property = {
+        "type": ["string", "null"],
+        "description": "Fecha ISO YYYY-MM-DD o null para usar el último corte disponible.",
+    }
     limit_property = {"type": "integer", "minimum": 1, "maximum": 50}
     identifier = {"type": "string", "minLength": 1, "maxLength": 128}
     return [
         {
             "type": "function",
             "name": "portfolio_snapshot",
-            "description": "Obtiene KPIs, saldo vencido y antigüedad de la cartera.",
+            "description": (
+                "Obtiene KPIs de cobranza, saldos, facturas, pagos y antigüedad de cartera."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {"as_of_date": date_property},
+                "required": ["as_of_date"],
                 "additionalProperties": False,
             },
+            "strict": True,
         },
         {
             "type": "function",
             "name": "customer_snapshot",
-            "description": "Analiza la situación de cobranza de un cliente identificado.",
+            "description": "Analiza saldos, pagos, KPIs y prioridad de un cliente identificado.",
             "parameters": {
                 "type": "object",
                 "properties": {"customer_id": identifier, "as_of_date": date_property},
-                "required": ["customer_id"],
+                "required": ["customer_id", "as_of_date"],
                 "additionalProperties": False,
             },
+            "strict": True,
         },
         {
             "type": "function",
             "name": "invoice_trace",
-            "description": "Reconstruye pagos, créditos, saldo y estados de una factura.",
+            "description": "Reconstruye pagos, créditos, saldo, vencimiento y estado de una factura.",
             "parameters": {
                 "type": "object",
                 "properties": {"document": identifier, "as_of_date": date_property},
-                "required": ["document"],
+                "required": ["document", "as_of_date"],
                 "additionalProperties": False,
             },
+            "strict": True,
         },
         {
             "type": "function",
             "name": "collection_priorities",
-            "description": "Obtiene un ranking explicable para la gestión de cobranza.",
+            "description": "Obtiene el ranking explicable de clientes por gestionar.",
             "parameters": {
                 "type": "object",
                 "properties": {"limit": limit_property, "as_of_date": date_property},
+                "required": ["limit", "as_of_date"],
                 "additionalProperties": False,
             },
+            "strict": True,
         },
         {
             "type": "function",
             "name": "reconciliation_exceptions",
-            "description": "Lista documentos que requieren validar su aplicación.",
+            "description": (
+                "Analiza aplicaciones documentales, pagos parciales y casos que requieren revisión."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {"limit": limit_property, "as_of_date": date_property},
+                "required": ["limit", "as_of_date"],
                 "additionalProperties": False,
             },
+            "strict": True,
         },
     ]
 
 
 def tool_definitions() -> list[ToolDefinition]:
-    """Return compact metadata without duplicating schema policy."""
     return [
         ToolDefinition(schema["name"], schema["description"], schema["parameters"])
         for schema in tool_schemas()
@@ -126,9 +154,9 @@ def validate_arguments(
 ) -> dict[str, Any]:
     """Reject model-proposed tools and arguments outside the closed contract."""
     if tool_name not in TOOL_NAMES:
-        raise ValueError("La tool solicitada no está autorizada para Cobranzas.")
+        raise ValueError("La herramienta solicitada no está autorizada para Cobranzas.")
     if not isinstance(arguments, dict):
-        raise ValueError("Los argumentos de la tool deben ser un objeto JSON.")
+        raise ValueError("Los argumentos de la herramienta deben ser un objeto JSON.")
     allowed = {
         "portfolio_snapshot": {"as_of_date"},
         "customer_snapshot": {"customer_id", "as_of_date"},
@@ -137,7 +165,7 @@ def validate_arguments(
         "reconciliation_exceptions": {"limit", "as_of_date"},
     }[tool_name]
     if set(arguments) - allowed:
-        raise ValueError("La tool recibió parámetros no autorizados.")
+        raise ValueError("La herramienta recibió parámetros no autorizados.")
 
     values = dict(arguments)
     if as_of_date is not None:
@@ -153,12 +181,12 @@ def validate_arguments(
         "invoice_trace": "document",
     }.get(tool_name)
     if required_identifier:
-        identifier = values.get(required_identifier)
-        if not isinstance(identifier, str) or not identifier.strip():
+        identifier_value = values.get(required_identifier)
+        if not isinstance(identifier_value, str) or not identifier_value.strip():
             raise ValueError(f"{required_identifier} es obligatorio para esta consulta.")
-        if len(identifier.strip()) > 128:
+        if len(identifier_value.strip()) > 128:
             raise ValueError(f"{required_identifier} excede el máximo de 128 caracteres.")
-        values[required_identifier] = identifier.strip()
+        values[required_identifier] = identifier_value.strip()
 
     if "limit" in values:
         limit = values["limit"]
@@ -195,99 +223,25 @@ def dispatch(
     return routes[tool_name]()
 
 
-def _extract_identifier(question: str, noun: str) -> str | None:
-    direct_pattern = (
-        r"\bCLIENT_[A-Z0-9_-]{1,120}\b"
-        if noun == "cliente"
-        else r"\b(?:FAC|S[0-9A-Z]{2,8})-[A-Z0-9-]{2,120}\b"
-    )
-    direct = re.search(direct_pattern, question, flags=re.IGNORECASE)
-    if direct:
-        return direct.group(0)
-    pattern = (
-        rf"(?:{noun})\s*(?:n[.°ºo]*|id|código|codigo|[:#])\s*[:#-]?\s*"
-        r"([A-Z0-9][A-Z0-9_-]{2,127})"
-    )
-    match = re.search(pattern, question, flags=re.IGNORECASE)
-    return match.group(1) if match else None
-
-
-def deterministic_route(question: str, as_of_date: str | None) -> tuple[str, dict[str, Any]]:
-    """Route a safe deterministic fallback without performing calculations."""
-    normalized = question.casefold()
-    invoice_id = _extract_identifier(question, "factura") or _extract_identifier(
-        question, "documento"
-    )
-    customer_id = _extract_identifier(question, "cliente")
-    common = {"as_of_date": as_of_date} if as_of_date else {}
-    if invoice_id:
-        return "invoice_trace", {**common, "document": invoice_id}
-    if customer_id:
-        return "customer_snapshot", {**common, "customer_id": customer_id}
-    if any(term in normalized for term in ("concili", "excep", "pago sin", "aplicación")):
-        return "reconciliation_exceptions", {**common, "limit": 10}
-    if any(
-        term in normalized
-        for term in ("prior", "urgente", "atender primero", "gestionar primero", "ranking")
-    ):
-        return "collection_priorities", {**common, "limit": 10}
-    return "portfolio_snapshot", common
-
-
-def _money(value: Any) -> str:
-    return f"S/ {float(value or 0):,.2f}"
-
-
-def deterministic_narrative(payload: dict[str, Any]) -> str:
-    """Narrate only fields already calculated by the selected tool."""
-    operation = payload.get("operation")
-    metrics = payload.get("metrics", {})
-    cutoff = payload.get("as_of_date", "el corte disponible")
-    if operation == "portfolio_snapshot":
-        answer = (
-            f"Al {cutoff}, la cartera registra {_money(metrics.get('outstanding_balance'))} "
-            f"pendiente y {_money(metrics.get('overdue_balance'))} vencido."
-        )
-    elif operation == "customer_snapshot":
-        answer = (
-            f"Al {cutoff}, el cliente analizado mantiene "
-            f"{_money(metrics.get('overdue_balance'))} vencido."
-        )
-    elif operation == "invoice_trace":
-        answer = (
-            f"Al {cutoff}, la factura conserva "
-            f"{_money(metrics.get('outstanding_balance'))} pendiente."
-        )
-    elif operation == "collection_priorities":
-        answer = (
-            f"El ranking determinístico evaluó {int(metrics.get('customers_ranked', 0))} "
-            "clientes y ordena la gestión por saldo vencido, atraso y concentración."
-        )
-    else:
-        answer = (
-            f"Se identificaron {int(metrics.get('exception_count', 0))} casos de aplicación "
-            "documental que requieren validación; no son errores confirmados."
-        )
-    return answer
-
-
-def _apply_question_guardrails(question: str, answer: str) -> str:
-    normalized = question.casefold()
-    if any(term in normalized for term in ("predice", "pronóstico", "forecast", "próximo mes")):
-        return (
-            "No existe una herramienta predictiva en este MVP; no puedo afirmar pagos o mora "
-            "futuros. " + answer
-        )
-    if "por qué" in normalized and any(term in normalized for term in ("no paga", "mora")):
-        return (
-            "El dataset describe asociaciones y saldos, pero no demuestra las causas del "
-            "comportamiento de pago. " + answer
-        )
-    if any(term in normalized for term in ("dólar", "dolar", "usd")) and any(
-        term in normalized for term in ("soles", "pen", "sol ")
-    ):
-        return "No se suman PEN y USD; el alcance monetario del MVP es PEN. " + answer
-    return answer
+def _compact_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Bound evidence sent to the model while returning the full result to callers."""
+    evidence = result.get("evidence", [])
+    return {
+        "operation": result.get("operation"),
+        "as_of_date": result.get("as_of_date"),
+        "entity": result.get("entity"),
+        "status": result.get("status"),
+        "metrics": result.get("metrics"),
+        "kpis": result.get("kpis"),
+        "aging": result.get("aging", [])[:10],
+        "reconciliation": result.get("reconciliation"),
+        "findings": result.get("findings"),
+        "alerts": result.get("alerts"),
+        "recommended_actions": result.get("recommended_actions"),
+        "evidence": evidence[:10] if isinstance(evidence, list) else [],
+        "evidence_truncated": isinstance(evidence, list) and len(evidence) > 10,
+        "data_quality": result.get("data_quality"),
+    }
 
 
 def _merge_usage(*items: dict[str, int]) -> dict[str, int]:
@@ -304,36 +258,85 @@ def ask(
     as_of_date: str | None = None,
     runtime: Any | None = None,
 ) -> dict[str, Any]:
-    """Answer through one grounded tool or a deterministic fallback."""
+    """Let OpenAI select one or more tools, then explain their computed results."""
     if not isinstance(question, str) or not question.strip() or len(question) > 1000:
         raise ValueError("La pregunta debe ser texto no vacío de hasta 1000 caracteres.")
     if as_of_date is not None:
         date.fromisoformat(as_of_date)
+    if runtime is None or not runtime.available:
+        raise RuntimeError(
+            "La consulta en lenguaje natural requiere OPENAI_API_KEY. "
+            "Las cinco vistas determinísticas continúan disponibles sin IA."
+        )
 
-    if runtime is not None and runtime.available:
-        selected = runtime.select_tool(question.strip(), as_of_date)
-        try:
-            arguments = validate_arguments(selected["tool_name"], selected["arguments"], as_of_date)
-        except (KeyError, TypeError, ValueError) as error:
+    cutoff_instruction = as_of_date or "usa la última fecha observable del dataset"
+    conversation: list[dict[str, Any]] = [
+        {
+            "role": "user",
+            "content": f"Fecha de corte: {cutoff_instruction}\nPregunta: {question.strip()}",
+        }
+    ]
+    responses: list[dict[str, Any]] = []
+    tool_results: list[dict[str, Any]] = []
+    calls_used = 0
+    response = runtime.create(conversation, require_tool=True, stage="tool_selection")
+    responses.append(response)
+    if not runtime.function_calls(response):
+        raise RuntimeError("OpenAI no seleccionó una herramienta de Cobranzas autorizada.")
+
+    while calls := runtime.function_calls(response):
+        if calls_used + len(calls) > runtime.max_tool_calls:
             raise RuntimeError(
-                "OpenCode Go devolvió una selección de tool no autorizada."
-            ) from error
-        payload = dispatch(service, selected["tool_name"], arguments, as_of_date)
-        answer, interpretation_usage = runtime.interpret(question.strip(), payload)
-        result = AgentResult(
-            answer=answer,
-            tool_name=selected["tool_name"],
-            tool_arguments=arguments,
-            agent_response=payload,
-            mode="llm",
-            usage=_merge_usage(selected.get("usage", {}), interpretation_usage),
-        ).to_dict()
-        result["prompt"] = prompt_metadata()
-        result["llm"] = runtime.metadata()
-        return result
+                "La consulta excede el límite de herramientas; formula una pregunta más específica."
+            )
+        calls_used += len(calls)
+        outputs: list[dict[str, Any]] = []
+        for call in calls:
+            call_id = call.get("call_id")
+            tool_name = call.get("name")
+            try:
+                arguments = json.loads(str(call.get("arguments", "{}")))
+                if not isinstance(tool_name, str) or not isinstance(call_id, str):
+                    raise ValueError("La llamada de herramienta está incompleta.")
+                validated = validate_arguments(tool_name, arguments, as_of_date)
+                result = dispatch(service, tool_name, validated, as_of_date)
+                tool_results.append({"tool": tool_name, "arguments": validated, "result": result})
+                output_payload: dict[str, Any] = _compact_result(result)
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+                output_payload = {"error": str(error)}
+                tool_results.append(
+                    {
+                        "tool": tool_name if isinstance(tool_name, str) else "invalid",
+                        "arguments": {},
+                        "error": str(error),
+                    }
+                )
+            if not isinstance(call_id, str):
+                raise RuntimeError("OpenAI devolvió una llamada sin identificador.")
+            outputs.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": json.dumps(output_payload, ensure_ascii=False),
+                }
+            )
 
-    tool_name, arguments = deterministic_route(question, as_of_date)
-    validated = validate_arguments(tool_name, arguments, as_of_date)
-    payload = dispatch(service, tool_name, validated, as_of_date)
-    answer = _apply_question_guardrails(question, deterministic_narrative(payload))
-    return AgentResult(answer, tool_name, validated, payload, "deterministic", {}).to_dict()
+        conversation.extend(runtime.output_items(response))
+        conversation.extend(outputs)
+        response = runtime.create(
+            conversation,
+            require_tool=False,
+            stage="tool_follow_up",
+        )
+        responses.append(response)
+
+    answer = runtime.output_text(response)
+    if not answer:
+        raise RuntimeError("OpenAI no devolvió una explicación final sustentada.")
+    return AgentResult(
+        answer=answer,
+        tool_results=tool_results,
+        usage=_merge_usage(*(runtime.usage(item) for item in responses)),
+        llm=runtime.metadata(),
+        as_of_date=as_of_date,
+    ).to_dict()
