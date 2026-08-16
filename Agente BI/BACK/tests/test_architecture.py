@@ -41,6 +41,23 @@ def test_bi_frontend_is_a_pure_http_client() -> None:
         assert forbidden not in frontend_source
 
 
+def test_bi_frontend_marks_only_successful_llm_responses() -> None:
+    html = (BI_FRONTEND / "index.html").read_text(encoding="utf-8")
+    javascript = (BI_FRONTEND / "assets" / "app.js").read_text(encoding="utf-8")
+    assert 'id="ai-badge"' in html
+    assert "Hecho con IA" in html
+    assert 'const aiGenerated = payload.mode === "llm"' in javascript
+    assert 'byId("ai-badge").hidden = !aiGenerated' in javascript
+    assert 'payload.mode === "deterministic_fallback"' in javascript
+
+
+def test_front_proxies_allow_six_file_multipart_uploads() -> None:
+    shared_proxy = AGENT_ROOT.parent / "front" / "nginx.conf.template"
+    standalone_proxy = BI_FRONTEND / "nginx.conf.template"
+    for proxy in (shared_proxy, standalone_proxy):
+        assert "client_max_body_size 26m;" in proxy.read_text(encoding="utf-8")
+
+
 def test_standalone_tree_has_no_legacy_paths_or_pending_prompt() -> None:
     current_test = Path(__file__).resolve()
     contents = "\n".join(
