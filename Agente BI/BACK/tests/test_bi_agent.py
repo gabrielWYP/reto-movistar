@@ -9,6 +9,7 @@ import unittest
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -676,11 +677,55 @@ class BICoreTests(unittest.TestCase):
         self.assertIn("function", calls[0][0]["tools"][0])
         self.assertEqual(calls[0][1], "test")
 
+    def test_opencode_http_client_sets_cloudflare_safe_headers(self):
+        class StubResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            @staticmethod
+            def read():
+                return b'{"choices": []}'
+
+        with patch("bi_agent.llm_runtime.urlopen", return_value=StubResponse()) as post:
+            response = OpenCodeRuntime._http_post({"model": "test"}, "secret")
+
+        request = post.call_args.args[0]
+        self.assertEqual(response, {"choices": []})
+        self.assertEqual(request.get_header("Accept"), "application/json")
+        self.assertEqual(request.get_header("User-agent"), "sonia-bi/1.0")
+        self.assertEqual(request.get_header("Authorization"), "Bearer secret")
+
+    def test_opencode_http_client_reports_sanitized_cloudflare_code(self):
+        error = HTTPError(
+            "https://opencode.ai/zen/go/v1/chat/completions",
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=io.BytesIO(b"error code: 1010"),
+        )
+        with patch("bi_agent.llm_runtime.urlopen", side_effect=error):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                r"OpenCode Go devolvió HTTP 403 \(Cloudflare error 1010\)\.",
+            ):
+                OpenCodeRuntime._http_post({"model": "test"}, "secret")
+
     def test_opencode_probe_requires_a_real_text_completion(self):
         response = {"choices": [{"message": {"role": "assistant", "content": "OK"}}]}
-        runtime = OpenCodeRuntime(post=lambda payload, key: response)
+        calls = []
+
+        def post(payload, key):
+            calls.append((payload, key))
+            return response
+
+        runtime = OpenCodeRuntime(post=post)
         with patch.dict("os.environ", {"OPENCODE_KEY": "test"}, clear=True):
             runtime.probe()
+        self.assertEqual(calls[0][0]["max_tokens"], 64)
+        self.assertEqual(calls[0][1], "test")
 
     def test_presentation_labels_metrics_without_changing_numeric_values_or_response(self):
         response = self.service.risk_concentration(
