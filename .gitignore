@@ -1,1 +1,22 @@
-__pycache__/ *.py[cod] .pytest_cache/ .venv/ *.egg-info/ .env Agente Cobranzas/data/source/*.zip
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+node_modules/
+frontend/dist/
+Agente BI/DATASET/
+/Agente Cobranzas/
+evals/reports/*.json
+evals/reports/*.html
+!evals/reports/README.md
+.DS_Store

@@ -1,0 +1,27 @@
+version: 1
+rules:
+  - id: BILLING-001
+    name: El monto PxQ coincide con el total facturable
+    owner: facturacion
+    severity: blocker
+    inputs:
+      - quantity
+      - unit_price
+      - invoice_total
+    condition: quantity * unit_price == invoice_total
+    on_failure: MANUAL_REVIEW
+    evidence_required:
+      - source_file
+      - source_location
+
+  - id: BILLING-002
+    name: La moneda es única para el documento
+    owner: facturacion
+    severity: blocker
+    inputs:
+      - currency
+    condition: currency in [PEN, USD]
+    on_failure: MANUAL_REVIEW
+    evidence_required:
+      - source_file
+      - source_location

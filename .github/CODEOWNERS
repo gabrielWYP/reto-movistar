@@ -1,0 +1,12 @@
+# Technical boundaries
+/back/ @gabrielWYP
+/front/ @gabrielWYP
+/.github/ @gabrielWYP
+/Dockerfile @gabrielWYP
+/compose.yaml @gabrielWYP
+
+# Business contracts still require technical review before becoming executable
+/business/ @gabrielWYP
+/data/ @gabrielWYP
+/prompts/ @gabrielWYP
+/evals/ @gabrielWYP

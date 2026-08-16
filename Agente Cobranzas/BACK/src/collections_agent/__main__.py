@@ -1,1 +1,0 @@
-"""Run the collections API as an independent backend service."""  import uvicorn  from .api import app from .config import Settings   def main() -> None:     settings = Settings.from_env()     uvicorn.run(app, host=settings.host, port=settings.port, log_level="info")   if __name__ == "__main__":     main()

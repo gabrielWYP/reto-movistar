@@ -1,0 +1,33 @@
+services:
+  back:
+    build:
+      context: .
+      dockerfile: back/Dockerfile
+    environment:
+      SONIA_ENVIRONMENT: local
+      SONIA_LOG_LEVEL: INFO
+      SONIA_BI_MODEL: ${SONIA_BI_MODEL:-deepseek-v4-flash}
+      OPENCODE_KEY: ${OPENCODE_KEY:-}
+      SONIA_COLLECTIONS_MODEL: ${SONIA_COLLECTIONS_MODEL:-gpt-5.6-terra}
+      SONIA_COLLECTIONS_REASONING_EFFORT: ${SONIA_COLLECTIONS_REASONING_EFFORT:-low}
+      SONIA_COLLECTIONS_MAX_TOOL_CALLS: ${SONIA_COLLECTIONS_MAX_TOOL_CALLS:-3}
+      SONIA_COLLECTIONS_MAX_OUTPUT_TOKENS: ${SONIA_COLLECTIONS_MAX_OUTPUT_TOKENS:-700}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+
+  front:
+    build:
+      context: .
+      dockerfile: front/Dockerfile
+    depends_on:
+      back:
+        condition: service_healthy
+    environment:
+      BACKEND_HOST: back
+      BACKEND_PORT: "8080"
+    ports:
+      - "${SONIA_PUBLIC_PORT:-8080}:8080"
+    restart: unless-stopped

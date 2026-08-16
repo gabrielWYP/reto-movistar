@@ -1,0 +1,30 @@
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    SONIA_ENVIRONMENT=production \
+    SONIA_HOST=0.0.0.0 \
+    SONIA_PORT=8080 \
+    SONIA_FRONTEND_DIR=/app/no-frontend
+
+WORKDIR /app
+
+RUN groupadd --gid 1001 sonia \
+    && useradd --uid 1001 --gid sonia --no-create-home --shell /usr/sbin/nologin sonia
+
+COPY back/pyproject.toml back/README.md LICENSE ./
+COPY back/src ./src
+COPY ["Agente BI/BACK/pyproject.toml", "Agente BI/BACK/README.md", "/opt/bi-agent/"]
+COPY ["Agente BI/BACK/src", "/opt/bi-agent/src"]
+COPY ["Agente BI/BACK/prompts", "/opt/bi-agent/prompts"]
+
+RUN pip install --no-cache-dir /opt/bi-agent .
+
+USER 1001:1001
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+
+CMD ["python", "-m", "sonia"]

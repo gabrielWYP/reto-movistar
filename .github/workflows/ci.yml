@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/deploy-k3s.yml"
+      - Dockerfile
+      - compose.yaml
+      - "Agente BI/**"
+      - "back/**"
+      - "front/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/deploy-k3s.yml"
+      - Dockerfile
+      - compose.yaml
+      - "Agente BI/**"
+      - "back/**"
+      - "front/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality and tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            back/pyproject.toml
+            Agente BI/BACK/pyproject.toml
+
+      - name: Install BI agent
+        working-directory: "Agente BI/BACK"
+        run: python -m pip install --disable-pip-version-check ".[dev]"
+
+      - name: Install shared project
+        working-directory: back
+        run: python -m pip install --disable-pip-version-check ".[dev]"
+
+      - name: Lint
+        working-directory: back
+        run: python -m ruff check src tests
+
+      - name: Verify formatting
+        working-directory: back
+        run: python -m ruff format --check src tests
+
+      - name: Type check
+        working-directory: back
+        run: python -m mypy src
+
+      - name: Test
+        working-directory: back
+        run: python -m pytest
+
+      - name: Lint BI agent
+        working-directory: "Agente BI/BACK"
+        run: python -m ruff check src tests
+
+      - name: Verify BI agent formatting
+        working-directory: "Agente BI/BACK"
+        run: python -m ruff format --check src tests
+
+      - name: Type check BI agent
+        working-directory: "Agente BI/BACK"
+        run: python -m mypy src
+
+      - name: Test BI agent
+        working-directory: "Agente BI/BACK"
+        run: python -m pytest
+
+  container:
+    name: Container smoke test
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Build compatibility image
+        run: docker build --tag sonia-movistar:ci .
+
+      - name: Build two-pod images
+        run: |
+          docker build --file back/Dockerfile --tag sonia-back:ci .
+          docker build --file front/Dockerfile --tag sonia-front:ci .
+
+      - name: Verify compatibility image
+        run: |
+          set -euo pipefail
+          container_id="$(docker run --detach --rm \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --publish 127.0.0.1:18080:8080 \
+            sonia-movistar:ci)"
+          trap 'docker stop "${container_id}" >/dev/null 2>&1 || true' EXIT
+
+          response="$(curl --fail --silent --show-error \
+            --retry 10 --retry-delay 2 --retry-all-errors \
+            http://127.0.0.1:18080/health)"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["status"] == "ok"' \
+            "${response}"
+
+          curl --fail --silent --show-error \
+            http://127.0.0.1:18080/ \
+            | grep --fixed-strings --quiet "Centro de operaciones"
+
+          curl --fail --silent --show-error \
+            http://127.0.0.1:18080/bi/ \
+            | grep --fixed-strings --quiet "Business Intelligence"
+
+          bi_status="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18080/api/bi/status)"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["status"] == "dataset_not_configured"' \
+            "${bi_status}"
+
+          scenario="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18080/api/demo/scenario)"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert len(payload["agents"]) == 3' \
+            "${scenario}"
+
+          test "$(docker inspect "${container_id}" --format '{{.Config.User}}')" = "1001:1001"
+          test "$(docker inspect "${container_id}" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
+
+      - name: Verify two-pod contract
+        run: |
+          set -euo pipefail
+          export SONIA_PUBLIC_PORT=18081
+          docker compose up --detach --wait
+          trap 'docker compose down --volumes' EXIT
+
+          homepage="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18081/)"
+          grep --fixed-strings --quiet "Centro de operaciones" <<< "${homepage}"
+          ! grep --fixed-strings --quiet "__ASSET_VERSION__" <<< "${homepage}"
+          grep --extended-regexp --quiet \
+            '/assets/app\.js\?v=[0-9a-f]{12}' <<< "${homepage}"
+
+          bi_homepage="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18081/bi/)"
+          grep --fixed-strings --quiet "Business Intelligence" <<< "${bi_homepage}"
+          ! grep --fixed-strings --quiet "__ASSET_VERSION__" <<< "${bi_homepage}"
+          grep --extended-regexp --quiet \
+            'assets/app\.js\?v=[0-9a-f]{12}' <<< "${bi_homepage}"
+
+          curl --fail --silent --show-error --head \
+            http://127.0.0.1:18081/ \
+            | tr -d '\r' \
+            | grep --ignore-case --fixed-strings --quiet \
+              'cache-control: no-cache, no-store, must-revalidate'
+
+          curl --fail --silent --show-error --head \
+            'http://127.0.0.1:18081/assets/app.js?v=ci' \
+            | tr -d '\r' \
+            | grep --ignore-case --fixed-strings --quiet \
+              'cache-control: public, max-age=31536000, immutable'
+
+          curl --fail --silent --show-error --head \
+            'http://127.0.0.1:18081/bi/assets/app.js?v=ci' \
+            | tr -d '\r' \
+            | grep --ignore-case --fixed-strings --quiet \
+              'cache-control: public, max-age=31536000, immutable'
+
+          agents="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18081/api/agents)"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert [item["agent_id"] for item in payload] == ["billing", "collections", "bi"]' \
+            "${agents}"
+
+          bi_status="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18081/api/bi/status)"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["status"] == "dataset_not_configured"' \
+            "${bi_status}"
+
+          test "$(docker inspect "$(docker compose ps --quiet back)" \
+            --format '{{.Config.User}}')" = "1001:1001"
