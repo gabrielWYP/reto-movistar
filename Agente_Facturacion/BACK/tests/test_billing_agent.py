@@ -72,21 +72,21 @@ class UnitTests(unittest.TestCase):
             self.skipTest("SONIA_DATASET no configurado")
         client = TestClient(create_app(Settings(dataset_path=DATASET)))
         self.assertEqual(client.get("/health").status_code, 200)
-            status = client.get("/api/status").json()
-            self.assertEqual(status["max_as_of_date"], "2026-08-07")
-            paths = (
-                "/api/health", "/api/customer?customer_id=CLIENT_00434",
-                "/api/invoice?invoice_id=S300-0256413", "/api/gaps",
-                "/api/credit-notes",
-            )
-            for path in paths:
-                response = client.get(path)
-                self.assertEqual(response.status_code, 200, path)
-                self.assertIn("agent_response", response.json())
-            self.assertEqual(client.get("/api/customer?customer_id=UNKNOWN").status_code, 404)
-            self.assertEqual(client.get("/api/invoice?invoice_id=UNKNOWN").status_code, 404)
-            conversation = client.post("/api/conversation", json={"question": "Que deberia revisar hoy?", "context": {}}).json()
-            self.assertEqual((conversation["intent"], conversation["tool"]), ("portfolio_health", "billing_health_snapshot"))
+        status = client.get("/api/status").json()
+        self.assertEqual(status["max_as_of_date"], "2026-08-07")
+        paths = (
+            "/api/health", "/api/customer?customer_id=CLIENT_00434",
+            "/api/invoice?invoice_id=S300-0256413", "/api/gaps",
+            "/api/credit-notes",
+        )
+        for path in paths:
+            response = client.get(path)
+            self.assertEqual(response.status_code, 200, path)
+            self.assertIn("agent_response", response.json())
+        self.assertEqual(client.get("/api/customer?customer_id=UNKNOWN").status_code, 404)
+        self.assertEqual(client.get("/api/invoice?invoice_id=UNKNOWN").status_code, 404)
+        conversation = client.post("/api/conversation", json={"question": "Que deberia revisar hoy?", "context": {}}).json()
+        self.assertEqual((conversation["intent"], conversation["tool"]), ("portfolio_health", "billing_health_snapshot"))
 
     def test_deterministic_router_and_required_clarifications(self) -> None:
         self.assertEqual(deterministic_route("¿Qué debería revisar hoy?").tool, "billing_health_snapshot")
