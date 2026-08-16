@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict, cast
 
 from .contracts import AgentResponse
 from .data import SoniaDataset, load_dataset
 from .ledger import InvoiceLedger, Ledger, build_ledger, by_customer
 from .rules import PRIORITY_WEIGHTS, TOLERANCE, aging_bucket, priority_level
+
+ZERO = Decimal()
+RATIO_PRECISION = Decimal("0.0001")
+DAY_PRECISION = Decimal("0.1")
 
 
 class PriorityRow(TypedDict):
@@ -47,10 +51,11 @@ class CollectionsService:
         totals: dict[str, Decimal] = defaultdict(Decimal)
         docs: Counter[str] = Counter()
         for invoice in invoices:
-            if invoice.open_balance <= TOLERANCE:
+            open_balance = invoice.open_balance_as_of(as_of)
+            if open_balance <= TOLERANCE:
                 continue
             bucket = aging_bucket(invoice.days_past_due(as_of))
-            totals[bucket] += invoice.open_balance
+            totals[bucket] += open_balance
             docs[bucket] += 1
         order = ["NO_VENCIDA", "1_30", "31_60", "61_90", "90_PLUS", "SIN_FECHA_VENCIMIENTO"]
         return [
@@ -61,6 +66,8 @@ class CollectionsService:
 
     @staticmethod
     def _invoice_evidence(invoice: InvoiceLedger, as_of: date) -> dict[str, Any]:
+        paid = invoice.paid_as_of(as_of)
+        credited = invoice.credited_as_of(as_of)
         return {
             "document": invoice.document,
             "customer": invoice.customer,
@@ -69,50 +76,159 @@ class CollectionsService:
             "due_at": invoice.due_at,
             "days_past_due": invoice.days_past_due(as_of),
             "invoice_total": invoice.total,
-            "credit_notes": invoice.credited,
-            "paid": invoice.paid,
-            "outstanding_balance": invoice.open_balance,
-            "settlement_state": invoice.settlement_state(),
+            "credit_notes": credited,
+            "paid": paid,
+            "outstanding_balance": invoice.open_balance_as_of(as_of),
+            "settlement_state": invoice.settlement_state(as_of),
             "delinquency_state": invoice.delinquency_state(as_of),
-            "reconciliation_state": invoice.reconciliation_state(),
+            "reconciliation_state": invoice.reconciliation_state(as_of),
         }
 
     @staticmethod
     def _metrics(invoices: list[InvoiceLedger], as_of: date) -> dict[str, Any]:
         total_billed = sum((invoice.total for invoice in invoices), Decimal())
-        total_paid = sum((invoice.paid for invoice in invoices), Decimal())
-        outstanding = sum((invoice.open_balance for invoice in invoices), Decimal())
+        total_paid = sum((invoice.paid_as_of(as_of) for invoice in invoices), Decimal())
+        outstanding = sum((invoice.open_balance_as_of(as_of) for invoice in invoices), Decimal())
         overdue = sum(
             (
-                invoice.open_balance
+                invoice.open_balance_as_of(as_of)
                 for invoice in invoices
                 if invoice.due_at and invoice.due_at < as_of
             ),
             Decimal(),
         )
+        collection_ratio = total_paid / total_billed if total_billed else ZERO
         return {
             "total_billed": total_billed,
             "total_paid_linked": total_paid,
-            "credit_notes_linked": sum((invoice.credited for invoice in invoices), Decimal()),
+            "credit_notes_linked": sum(
+                (invoice.credited_as_of(as_of) for invoice in invoices), Decimal()
+            ),
             "outstanding_balance": outstanding,
             "overdue_balance": overdue,
-            "collection_ratio": (total_paid / total_billed) if total_billed else Decimal(),
+            "collection_ratio": float(collection_ratio.quantize(RATIO_PRECISION)),
             "invoice_count": len(invoices),
-            "open_invoice_count": sum(invoice.open_balance > TOLERANCE for invoice in invoices),
+            "open_invoice_count": sum(
+                invoice.open_balance_as_of(as_of) > TOLERANCE for invoice in invoices
+            ),
+            "overdue_invoice_count": sum(
+                invoice.open_balance_as_of(as_of) > TOLERANCE
+                and invoice.due_at is not None
+                and invoice.due_at < as_of
+                for invoice in invoices
+            ),
+            "partial_payment_invoice_count": sum(
+                invoice.settlement_state(as_of) == "PAGO_PARCIAL" for invoice in invoices
+            ),
+            "payment_application_count": sum(
+                len(invoice.payments_as_of(as_of)) for invoice in invoices
+            ),
+        }
+
+    @staticmethod
+    def _kpis(invoices: list[InvoiceLedger], as_of: date) -> dict[str, Any]:
+        """Calculate challenge KPIs from valid, linked applications only."""
+        eligible_cutoff = as_of - timedelta(days=30)
+        eligible = [
+            invoice
+            for invoice in invoices
+            if invoice.issued_at is not None
+            and invoice.issued_at <= eligible_cutoff
+            and invoice.total > ZERO
+        ]
+        eligible_documents = {invoice.document for invoice in eligible}
+        eligible_billed = sum((invoice.total for invoice in eligible), ZERO)
+        collected_within_30_days = ZERO
+        weighted_days = ZERO
+        weighted_amount = ZERO
+        contributing_applications = 0
+        excluded_temporal_applications = 0
+
+        for invoice in invoices:
+            if invoice.issued_at is None or invoice.total <= ZERO:
+                continue
+            remaining = invoice.total
+            valid_payments = sorted(
+                invoice.payments_as_of(as_of),
+                key=lambda payment: payment.paid_at or date.max,
+            )
+            for payment in valid_payments:
+                if payment.amount <= ZERO or payment.paid_at is None:
+                    continue
+                if payment.paid_at < invoice.issued_at:
+                    excluded_temporal_applications += 1
+                    continue
+                applied = min(payment.amount, remaining)
+                if applied <= ZERO:
+                    continue
+                elapsed_days = (payment.paid_at - invoice.issued_at).days
+                weighted_days += applied * elapsed_days
+                weighted_amount += applied
+                contributing_applications += 1
+                if invoice.document in eligible_documents and elapsed_days <= 30:
+                    collected_within_30_days += applied
+                remaining -= applied
+
+        ratio_30_days = collected_within_30_days / eligible_billed if eligible_billed else ZERO
+        average_days = weighted_days / weighted_amount if weighted_amount else None
+        return {
+            "collection_ratio_general": {
+                "value": CollectionsService._metrics(invoices, as_of)["collection_ratio"],
+                "unit": "ratio",
+                "definition": "Pagos vinculados observados al corte divididos entre facturación.",
+            },
+            "collection_ratio_30_days": {
+                "value": float(ratio_30_days.quantize(RATIO_PRECISION)),
+                "unit": "ratio",
+                "definition": (
+                    "Pagos aplicados entre la emisión y el día 30 inclusive, divididos entre "
+                    "facturación con una ventana completa de 30 días al corte."
+                ),
+                "eligible_invoice_count": len(eligible),
+                "eligible_billed_amount": eligible_billed,
+                "collected_within_30_days_amount": collected_within_30_days,
+            },
+            "average_collection_period": {
+                "value": (
+                    float(average_days.quantize(DAY_PRECISION))
+                    if average_days is not None
+                    else None
+                ),
+                "unit": "days",
+                "definition": (
+                    "Promedio de días desde emisión hasta pago, ponderado por importe aplicado "
+                    "y limitado al importe de cada factura."
+                ),
+                "payment_application_count": contributing_applications,
+                "linked_payment_amount": weighted_amount,
+                "excluded_temporal_application_count": excluded_temporal_applications,
+            },
         }
 
     def portfolio_snapshot(self, as_of_date: str | None = None) -> dict[str, Any]:
         as_of = self._as_of(as_of_date)
         invoices = list(self.ledger.invoices.values())
         metrics = self._metrics(invoices, as_of)
+        kpis = self._kpis(invoices, as_of)
+        metrics["collection_ratio_30_days"] = kpis["collection_ratio_30_days"]["value"]
+        metrics["average_collection_period_days"] = kpis["average_collection_period"]["value"]
         metrics["unmatched_payment_amount"] = sum(
-            (payment.amount for payment in self.ledger.unmatched_payments), Decimal()
+            (
+                payment.amount
+                for payment in self.ledger.unmatched_payments
+                if payment.paid_at is not None and payment.paid_at <= as_of
+            ),
+            Decimal(),
         )
-        metrics["unmatched_payment_count"] = len(self.ledger.unmatched_payments)
+        metrics["unmatched_payment_count"] = sum(
+            payment.paid_at is not None and payment.paid_at <= as_of
+            for payment in self.ledger.unmatched_payments
+        )
         response = AgentResponse(
             operation="portfolio_snapshot",
             as_of_date=as_of,
             metrics=metrics,
+            kpis=kpis,
             aging=self._aging(invoices, as_of),
             findings=[
                 {
@@ -135,9 +251,15 @@ class CollectionsService:
             ],
             data_quality={
                 "source_counts": self.ledger.source_counts,
+                "relationship_checks": {
+                    "unmatched_payment_count": metrics["unmatched_payment_count"],
+                    "mismatched_payment_count": len(self.ledger.mismatched_payments),
+                    "unmatched_credit_note_count": len(self.ledger.unmatched_credit_notes),
+                },
                 "known_limitations": [
                     "El dataset no contiene extractos bancarios ni comunicaciones.",
                     "El RUC está anonimizado de forma inconsistente; los joins de cliente usan RAZON_SOCIAL.",
+                    "Los KPIs de plazo excluyen pagos anteriores a la emisión.",
                 ],
             },
             visualization_hints=[
@@ -149,6 +271,8 @@ class CollectionsService:
                         "outstanding_balance",
                         "overdue_balance",
                         "collection_ratio",
+                        "collection_ratio_30_days",
+                        "average_collection_period_days",
                     ],
                 },
                 {"type": "aging_bar", "source": "aging"},
@@ -167,12 +291,32 @@ class CollectionsService:
         if not invoices:
             raise KeyError(f"Cliente no encontrado: {customer_id}")
         metrics = self._metrics(invoices, as_of)
+        kpis = self._kpis(invoices, as_of)
+        metrics["collection_ratio_30_days"] = kpis["collection_ratio_30_days"]["value"]
+        metrics["average_collection_period_days"] = kpis["average_collection_period"]["value"]
         priority = self._priority_rows(as_of)
-        priority_row = next(row for row in priority if row["customer"] == invoices[0].customer)
+        priority_row = next(
+            (row for row in priority if row["customer"] == invoices[0].customer),
+            cast(
+                PriorityRow,
+                {
+                    "customer": invoices[0].customer,
+                    "outstanding_balance": ZERO,
+                    "overdue_balance": ZERO,
+                    "max_days_past_due": 0,
+                    "overdue_share": ZERO,
+                    "score_components": {},
+                    "priority_score": ZERO,
+                    "priority": "LOW",
+                },
+            ),
+        )
         overdue = [
             invoice
             for invoice in invoices
-            if invoice.open_balance > TOLERANCE and invoice.due_at and invoice.due_at < as_of
+            if invoice.open_balance_as_of(as_of) > TOLERANCE
+            and invoice.due_at
+            and invoice.due_at < as_of
         ]
         response = AgentResponse(
             operation="customer_snapshot",
@@ -183,6 +327,7 @@ class CollectionsService:
                 "collection_state": "VENCIDA" if overdue else "AL_DIA",
             },
             metrics={**metrics, "priority_score": priority_row["priority_score"]},
+            kpis=kpis,
             aging=self._aging(invoices, as_of),
             findings=[
                 {
@@ -203,9 +348,11 @@ class CollectionsService:
             else [{"action": "monitor", "reason": "No hay saldo vencido al corte."}],
             evidence=[
                 self._invoice_evidence(invoice, as_of)
-                for invoice in sorted(invoices, key=lambda item: item.open_balance, reverse=True)[
-                    :20
-                ]
+                for invoice in sorted(
+                    invoices,
+                    key=lambda item: item.open_balance_as_of(as_of),
+                    reverse=True,
+                )[:20]
             ],
             visualization_hints=[
                 {"type": "customer_kpis", "source": "metrics"},
@@ -226,19 +373,23 @@ class CollectionsService:
                 "paid_at": payment.paid_at,
                 "account_code": payment.account_code,
             }
-            for payment in invoice.payments
+            for payment in sorted(
+                invoice.payments_as_of(as_of), key=lambda item: item.paid_at or date.max
+            )
         ]
         evidence["credit_note_documents"] = [
             {"document": note.document, "amount": note.amount, "issued_at": note.issued_at}
-            for note in invoice.credits
+            for note in sorted(
+                invoice.credits_as_of(as_of), key=lambda item: item.issued_at or date.max
+            )
         ]
-        state = invoice.reconciliation_state()
+        state = invoice.reconciliation_state(as_of)
         response = AgentResponse(
             operation="invoice_trace",
             as_of_date=as_of,
             entity={"type": "invoice", "id": invoice.document},
             status={
-                "settlement": invoice.settlement_state(),
+                "settlement": invoice.settlement_state(as_of),
                 "delinquency": invoice.delinquency_state(as_of),
                 "reconciliation": state,
             },
@@ -266,26 +417,29 @@ class CollectionsService:
 
     def _invoice_findings(self, invoice: InvoiceLedger, as_of: date) -> list[dict[str, Any]]:
         findings: list[dict[str, Any]] = []
-        if invoice.raw_balance < -TOLERANCE:
+        raw_balance = invoice.raw_balance_as_of(as_of)
+        open_balance = invoice.open_balance_as_of(as_of)
+        if raw_balance < -TOLERANCE:
             findings.append(
                 {
                     "type": "OVERAPPLICATION",
                     "severity": "HIGH",
                     "message": "Pagos y créditos exceden la obligación neta.",
-                    "amount": -invoice.raw_balance,
+                    "amount": -raw_balance,
                 }
             )
-        if invoice.open_balance > TOLERANCE:
+        if open_balance > TOLERANCE:
             findings.append(
                 {
                     "type": "OPEN_BALANCE",
                     "severity": invoice.delinquency_state(as_of),
                     "message": "La factura mantiene saldo abierto.",
-                    "amount": invoice.open_balance,
+                    "amount": open_balance,
                 }
             )
         if invoice.issued_at and any(
-            payment.paid_at and payment.paid_at < invoice.issued_at for payment in invoice.payments
+            payment.paid_at and payment.paid_at < invoice.issued_at
+            for payment in invoice.payments_as_of(as_of)
         ):
             findings.append(
                 {
@@ -303,29 +457,35 @@ class CollectionsService:
         ]
 
     def _invoice_actions(self, invoice: InvoiceLedger, as_of: date) -> list[dict[str, Any]]:
-        if invoice.raw_balance < -TOLERANCE:
+        raw_balance = invoice.raw_balance_as_of(as_of)
+        open_balance = invoice.open_balance_as_of(as_of)
+        if raw_balance < -TOLERANCE:
             return [
                 {
                     "action": "review_overapplication",
                     "reason": "El saldo a favor requiere validar aplicación, devolución o compensación.",
                 }
             ]
-        if invoice.open_balance > TOLERANCE and invoice.due_at and invoice.due_at < as_of:
+        if open_balance > TOLERANCE and invoice.due_at and invoice.due_at < as_of:
             return [{"action": "start_collection", "reason": "Saldo vencido documentado."}]
-        if invoice.open_balance > TOLERANCE:
+        if open_balance > TOLERANCE:
             return [{"action": "monitor_due_date", "reason": "Factura pendiente aún no vencida."}]
         return [{"action": "close_case", "reason": "Documento liquidado dentro de la tolerancia."}]
 
     def _priority_rows(self, as_of: date) -> list[PriorityRow]:
         rows: list[PriorityRow] = []
         for customer, invoices in by_customer(self.ledger.invoices.values()).items():
-            open_invoices = [invoice for invoice in invoices if invoice.open_balance > TOLERANCE]
+            open_invoices = [
+                invoice for invoice in invoices if invoice.open_balance_as_of(as_of) > TOLERANCE
+            ]
             if not open_invoices:
                 continue
-            outstanding = sum((invoice.open_balance for invoice in open_invoices), Decimal())
+            outstanding = sum(
+                (invoice.open_balance_as_of(as_of) for invoice in open_invoices), Decimal()
+            )
             overdue = sum(
                 (
-                    invoice.open_balance
+                    invoice.open_balance_as_of(as_of)
                     for invoice in open_invoices
                     if invoice.due_at and invoice.due_at < as_of
                 ),
@@ -405,7 +565,16 @@ class CollectionsService:
     ) -> dict[str, Any]:
         as_of = self._as_of(as_of_date)
         exceptions: list[dict[str, Any]] = []
+        payments_analyzed = sum(
+            len(invoice.payments_as_of(as_of)) for invoice in self.ledger.invoices.values()
+        )
+        partial_invoices = sum(
+            invoice.settlement_state(as_of) == "PAGO_PARCIAL"
+            for invoice in self.ledger.invoices.values()
+        )
         for payment in self.ledger.unmatched_payments:
+            if payment.paid_at is None or payment.paid_at > as_of:
+                continue
             exceptions.append(
                 {
                     "type": "PAYMENT_OUTSIDE_INVOICE_CUTOFF",
@@ -417,21 +586,54 @@ class CollectionsService:
                     "recommended_action": "Confirmar si la factura pertenece a otro corte o sistema.",
                 }
             )
+        for payment in self.ledger.mismatched_payments:
+            if payment.paid_at is None or payment.paid_at > as_of:
+                continue
+            exceptions.append(
+                {
+                    "type": "PAYMENT_LINK_MISMATCH",
+                    "severity": "HIGH",
+                    "document": payment.document,
+                    "customer": payment.customer,
+                    "amount": payment.amount,
+                    "paid_at": payment.paid_at,
+                    "recommended_action": (
+                        "Validar que cliente, cuenta y factura correspondan antes de aplicar el pago."
+                    ),
+                }
+            )
+        for credit in self.ledger.unmatched_credit_notes:
+            if credit.issued_at is None or credit.issued_at > as_of:
+                continue
+            exceptions.append(
+                {
+                    "type": "CREDIT_NOTE_OUTSIDE_INVOICE_CUTOFF",
+                    "severity": "MEDIUM",
+                    "document": credit.affected_document,
+                    "credit_note_document": credit.document,
+                    "amount": credit.amount,
+                    "issued_at": credit.issued_at,
+                    "recommended_action": (
+                        "Confirmar si la factura afectada pertenece a otro corte o sistema."
+                    ),
+                }
+            )
         for invoice in self.ledger.invoices.values():
-            if invoice.raw_balance < -TOLERANCE:
+            raw_balance = invoice.raw_balance_as_of(as_of)
+            if raw_balance < -TOLERANCE:
                 exceptions.append(
                     {
                         "type": "OVERAPPLICATION",
                         "severity": "HIGH",
                         "document": invoice.document,
                         "customer": invoice.customer,
-                        "amount": -invoice.raw_balance,
+                        "amount": -raw_balance,
                         "recommended_action": "Validar aplicación de pago y nota de crédito.",
                     }
                 )
-            elif invoice.issued_at and any(
+            if invoice.issued_at and any(
                 payment.paid_at and payment.paid_at < invoice.issued_at
-                for payment in invoice.payments
+                for payment in invoice.payments_as_of(as_of)
             ):
                 exceptions.append(
                     {
@@ -450,7 +652,12 @@ class CollectionsService:
             operation="reconciliation_exceptions",
             as_of_date=as_of,
             status={"reconciliation": "REQUIERE_REVISION" if exceptions else "CONCILIADA"},
-            metrics={"exception_count": len(exceptions), "returned": min(limit, len(exceptions))},
+            metrics={
+                "payment_applications_analyzed": payments_analyzed,
+                "partial_payment_invoice_count": partial_invoices,
+                "exception_count": len(exceptions),
+                "returned": min(limit, len(exceptions)),
+            },
             alerts=[
                 {"type": item["type"], "severity": item["severity"]} for item in exceptions[:limit]
             ],

@@ -7,7 +7,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, cast
 
-CONTRACT_VERSION = "1.0"
+CONTRACT_VERSION = "1.1"
 
 
 def json_value(value: Any) -> Any:
@@ -29,6 +29,7 @@ class AgentResponse:
     entity: dict[str, str] = field(default_factory=lambda: {"type": "portfolio", "id": "all"})
     status: dict[str, str] = field(default_factory=dict)
     metrics: dict[str, Any] = field(default_factory=dict)
+    kpis: dict[str, Any] = field(default_factory=dict)
     aging: list[dict[str, Any]] = field(default_factory=list)
     reconciliation: dict[str, Any] = field(default_factory=dict)
     findings: list[dict[str, Any]] = field(default_factory=list)
