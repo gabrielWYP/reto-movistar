@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -19,11 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 class CollectionsQueryRequest(BaseModel):
-    """Natural-language request interpreted through OpenAI tool selection."""
+    """Natural-language request interpreted through grounded OpenCode tools."""
 
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1, max_length=1000)
+    as_of_date: date | None = None
 
 
 def create_collections_router(backend: CollectionsBackend) -> APIRouter:
@@ -41,7 +43,8 @@ def create_collections_router(backend: CollectionsBackend) -> APIRouter:
         settings = backend.settings
         return {
             **backend.dataset_status(),
-            "openai_enabled": backend.llm_available,
+            "llm_available": backend.llm_available,
+            "llm": backend.llm_metadata,
             "model": settings.model,
             "tools": sorted(tool.name for tool in tool_definitions()),
         }
@@ -131,9 +134,12 @@ def create_collections_router(backend: CollectionsBackend) -> APIRouter:
     @router.post("/query")
     def query(request: CollectionsQueryRequest) -> dict[str, Any]:
         try:
-            return backend.query(request.question)
+            cutoff = request.as_of_date.isoformat() if request.as_of_date else None
+            return backend.query(request.question, cutoff)
         except RuntimeError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 

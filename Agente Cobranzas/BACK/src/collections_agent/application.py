@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-import os
+import logging
 from threading import RLock
+from time import perf_counter
 from typing import Any
 
-from .agent import dispatch, tool_definitions
+from .agent import ask, dispatch, tool_definitions, validate_arguments
 from .config import CollectionsSettings
-from .openai_runtime import ask
+from .llm_runtime import OpenCodeRuntime
+from .prompting import prompt_metadata
 from .service import CollectionsService
 from .uploads import load_uploaded_csvs
+
+logger = logging.getLogger(__name__)
 
 
 class CollectionsBackend:
@@ -21,8 +25,10 @@ class CollectionsBackend:
         *,
         service: CollectionsService | None = None,
         settings: CollectionsSettings | None = None,
+        runtime: OpenCodeRuntime | None = None,
     ) -> None:
         self._settings = settings or CollectionsSettings.from_environment()
+        self._runtime = runtime or OpenCodeRuntime(self._settings)
         self._service = service
         self._dataset_source = "injected" if service is not None else None
         self._dataset_error: str | None = None
@@ -34,13 +40,15 @@ class CollectionsBackend:
         if self._service is not None or dataset_path is None:
             return
         if not dataset_path.is_file():
-            self._dataset_error = f"No se encontró el dataset configurado: {dataset_path}"
+            self._dataset_error = "No se encontró el dataset configurado."
             return
         try:
             self._service = CollectionsService(dataset_path)
             self._dataset_source = "configured_file"
         except (KeyError, OSError, ValueError) as error:
-            self._dataset_error = f"No se pudo cargar el dataset configurado: {error}"
+            self._dataset_error = (
+                f"No se pudo cargar el dataset configurado: {type(error).__name__}"
+            )
 
     @property
     def configured(self) -> bool:
@@ -52,7 +60,12 @@ class CollectionsBackend:
 
     @property
     def llm_available(self) -> bool:
-        return bool(os.getenv("OPENAI_API_KEY", "").strip())
+        return self._runtime.available
+
+    @property
+    def llm_metadata(self) -> dict[str, str]:
+        """Expose provider and model without revealing credential state."""
+        return self._runtime.metadata()
 
     def dataset_status(self) -> dict[str, Any]:
         service = self._service
@@ -87,11 +100,50 @@ class CollectionsBackend:
             self._dataset_error = None
         return report.to_dict()
 
-    def execute_tool(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def execute_tool(
+        self,
+        operation: str,
+        arguments: dict[str, Any],
+        as_of_date: str | None = None,
+    ) -> dict[str, Any]:
         allowed = {tool.name for tool in tool_definitions()}
         if operation not in allowed:
             raise KeyError(f"Operación de Cobranzas no autorizada: {operation}")
-        return dispatch(self.service(), operation, arguments)
+        validated = validate_arguments(operation, arguments, as_of_date)
+        return dispatch(self.service(), operation, validated, as_of_date)
 
-    def query(self, question: str) -> dict[str, Any]:
-        return ask(self.service(), question, settings=self._settings)
+    def query(self, question: str, as_of_date: str | None = None) -> dict[str, Any]:
+        """Query OpenCode with a deterministic fallback and structured telemetry."""
+        started_at = perf_counter()
+        service = self.service()
+        try:
+            result = ask(service, question, as_of_date, self._runtime)
+        except RuntimeError as error:
+            if not self._runtime.available:
+                raise
+            logger.warning(
+                "collections_llm_fallback",
+                extra={
+                    "provider": self._runtime.metadata()["provider"],
+                    "model": self._runtime.metadata()["model"],
+                    "latency_ms": round((perf_counter() - started_at) * 1000, 3),
+                    "error_type": type(error).__name__,
+                },
+            )
+            result = ask(service, question, as_of_date, None)
+            result["mode"] = "deterministic_fallback"
+            result["runtime_warning"] = str(error)
+            result["prompt"] = prompt_metadata()
+
+        logger.info(
+            "collections_query_completed",
+            extra={
+                "mode": result["mode"],
+                "tool_used": result["tool_used"],
+                "provider": self._runtime.metadata()["provider"],
+                "model": self._runtime.metadata()["model"],
+                "latency_ms": round((perf_counter() - started_at) * 1000, 3),
+                **result.get("usage", {}),
+            },
+        )
+        return result

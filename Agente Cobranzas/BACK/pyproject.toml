@@ -10,7 +10,6 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115,<1.0",
-  "openai>=1.66,<3.0",
   "pydantic>=2.10,<3.0",
   "python-multipart>=0.0.20,<1.0",
   "uvicorn[standard]>=0.34,<1.0",
@@ -29,8 +28,13 @@ dev = [
 sonia-collections = "collections_agent.cli:main"
 sonia-collections-api = "collections_agent.__main__:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+packages = ["collections_agent", "collections_agent_prompts"]
+package-dir = {collections_agent = "src/collections_agent", collections_agent_prompts = "prompts"}
+include-package-data = true
+
+[tool.setuptools.package-data]
+collections_agent_prompts = ["*.md"]
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --disable-warnings"

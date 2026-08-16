@@ -31,7 +31,6 @@ def parser() -> argparse.ArgumentParser:
     exceptions.add_argument("--limit", type=int, default=20)
     ask = sub.add_parser("ask", parents=[common])
     ask.add_argument("question")
-    ask.add_argument("--model")
     return result
 
 
@@ -53,9 +52,11 @@ def main() -> None:
     elif args.command == "exceptions":
         payload = service.reconciliation_exceptions(args.limit, args.as_of_date)
     else:
-        from .openai_runtime import ask
+        from .agent import ask
+        from .llm_runtime import OpenCodeRuntime
 
-        payload = ask(service, args.question, args.model)
+        settings = CollectionsSettings.from_environment()
+        payload = ask(service, args.question, args.as_of_date, OpenCodeRuntime(settings))
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
