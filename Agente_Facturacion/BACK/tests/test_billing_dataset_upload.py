@@ -21,7 +21,7 @@ class DatasetUploadAcceptanceTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.default = write_sources(self.root / "default", 1, "DEFAULT")
-        settings = Settings(dataset_path=self.default, upload_root=self.root / "uploads")
+        settings = Settings(dataset_path=self.default)
         self.app = create_app(settings)
         self.client = TestClient(self.app)
 
@@ -134,14 +134,11 @@ class DatasetUploadAcceptanceTests(unittest.TestCase):
         self.assertNotIn("SECRET_CSV_ROW", "".join(received))
         self.assertNotIn(str(self.root), "".join(received))
 
-    def test_ac11_delete_dataset_removes_workspace(self) -> None:
+    def test_ac11_upload_never_creates_a_workspace(self) -> None:
         uploaded = self.upload_csv()
-        record = self.app.state.dataset_registry.resolve(uploaded["dataset_id"])
-        workspace = record.workspace
-        self.assertTrue(workspace and workspace.exists())
+        self.assertEqual(list(self.root.iterdir()), [self.default])
         response = self.client.delete(f"/api/datasets/{uploaded['dataset_id']}")
         self.assertEqual(response.status_code, 204)
-        self.assertFalse(workspace.exists())
         self.assertEqual(self.client.get(f"/api/datasets/{uploaded['dataset_id']}/status").status_code, 404)
 
 

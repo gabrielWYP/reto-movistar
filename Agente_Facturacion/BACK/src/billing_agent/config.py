@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +13,6 @@ class Settings:
     port: int = 8080
     log_level: str = "INFO"
     dataset_path: Path | None = None
-    upload_root: Path = Path(tempfile.gettempdir()) / "sonia-billing"
     max_upload_bytes: int = 20 * 1024 * 1024
     max_uncompressed_bytes: int = 48 * 1024 * 1024
     max_upload_files: int = 5
@@ -31,7 +29,6 @@ class Settings:
             port=port,
             log_level=os.getenv("SONIA_LOG_LEVEL", "INFO").upper(),
             dataset_path=Path(dataset).expanduser().resolve() if dataset else None,
-            upload_root=Path(os.getenv("SONIA_UPLOAD_ROOT", str(Path(tempfile.gettempdir()) / "sonia-billing"))).resolve(),
             max_upload_bytes=int(os.getenv("SONIA_MAX_UPLOAD_MB", "20")) * 1024 * 1024,
             max_uncompressed_bytes=int(os.getenv("SONIA_MAX_UNCOMPRESSED_MB", "48")) * 1024 * 1024,
             max_upload_files=int(os.getenv("SONIA_MAX_UPLOAD_FILES", "5")),

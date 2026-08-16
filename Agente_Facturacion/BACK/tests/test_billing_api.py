@@ -28,7 +28,7 @@ class BillingArchitectureTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.dataset = write_sources(self.root / "default", 2)
-        self.settings = Settings(dataset_path=self.dataset, upload_root=self.root / "uploads")
+        self.settings = Settings(dataset_path=self.dataset)
         self.app = create_app(self.settings)
         self.client = TestClient(self.app)
 
@@ -36,7 +36,7 @@ class BillingArchitectureTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_get_health_is_stable_json_without_dataset(self) -> None:
-        app = create_app(Settings(dataset_path=None, upload_root=self.root / "empty-uploads"))
+        app = create_app(Settings(dataset_path=None))
         response = TestClient(app).get("/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "ok")
@@ -103,8 +103,7 @@ class BillingArchitectureTests(unittest.TestCase):
 
     def test_backend_configuration_comes_from_environment(self) -> None:
         with patch.dict(os.environ, {
-            "SONIA_DATASET": str(self.dataset), "SONIA_HOST": "0.0.0.0", "SONIA_PORT": "9090",
-            "SONIA_UPLOAD_ROOT": str(self.root / "configured")
+            "SONIA_DATASET": str(self.dataset), "SONIA_HOST": "0.0.0.0", "SONIA_PORT": "9090"
         }, clear=True):
             settings = Settings.from_environment()
         self.assertEqual((settings.host, settings.port), ("0.0.0.0", 9090))

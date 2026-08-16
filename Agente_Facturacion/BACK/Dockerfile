@@ -3,8 +3,7 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     SONIA_HOST=0.0.0.0 \
-    SONIA_PORT=8080 \
-    SONIA_UPLOAD_ROOT=/tmp/sonia-billing
+    SONIA_PORT=8080
 
 WORKDIR /app
 
