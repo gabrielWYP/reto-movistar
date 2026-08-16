@@ -125,7 +125,7 @@ class DatasetUploadAcceptanceTests(unittest.TestCase):
                 received.append(json.dumps(compact, ensure_ascii=False))
                 return "Explicación grounded mock."
 
-        with patch("billing_agent.app.OpenAIRuntime", return_value=FakeLLM()), patch.dict(os.environ, {"OPENAI_API_KEY": "mock"}):
+        with patch("billing_agent.app.OpenCodeRuntime", return_value=FakeLLM()), patch.dict(os.environ, {"OPENCODE_KEY": "mock"}):
             response = self.client.post("/api/conversation", json={
                 "question": "¿Qué debería revisar hoy?", "dataset_id": uploaded["dataset_id"], "context": {}
             })

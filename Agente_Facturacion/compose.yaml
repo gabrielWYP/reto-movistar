@@ -10,8 +10,8 @@ services:
       SONIA_UPLOAD_ROOT: /tmp/sonia-billing
       SONIA_MAX_UPLOAD_MB: "20"
       SONIA_MAX_UNCOMPRESSED_MB: "48"
-      SONIA_BILLING_MODEL: ${SONIA_BILLING_MODEL:-gpt-5}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SONIA_BILLING_MODEL: ${SONIA_BILLING_MODEL:-deepseek-v4-flash}
+      OPENCODE_KEY: ${OPENCODE_KEY:-}
     volumes:
       - "${SONIA_DATASET:-../data/source/DATASET}:/data:ro"
     read_only: true

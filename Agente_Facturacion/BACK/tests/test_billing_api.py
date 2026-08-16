@@ -75,7 +75,7 @@ class BillingArchitectureTests(unittest.TestCase):
             path.read_text("utf-8") for path in (AGENT_ROOT / "FRONT").rglob("*")
             if path.is_file() and path.suffix.lower() in {".html", ".css", ".js", ".py", ".md", ".template"}
         )
-        for forbidden in ("OPENAI_API_KEY", "MATERIAL_MEDIUM", "TOLERANCE =", "Decimal(", "http://127.0.0.1:8503", "C:/Users/", "C:\\Users\\"):
+        for forbidden in ("OPENCODE_KEY", "MATERIAL_MEDIUM", "TOLERANCE =", "Decimal(", "http://127.0.0.1:8503", "C:/Users/", "C:\\Users\\"):
             self.assertNotIn(forbidden, frontend)
         app_js = (AGENT_ROOT / "FRONT" / "assets" / "app.js").read_text("utf-8")
         self.assertNotIn("0.01", app_js)

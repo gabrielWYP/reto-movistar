@@ -22,11 +22,11 @@ spec:
             - configMapRef:
                 name: billing-agent-config
           env:
-            - name: OPENAI_API_KEY
+            - name: OPENCODE_KEY
               valueFrom:
                 secretKeyRef:
-                  name: billing-agent-openai
-                  key: OPENAI_API_KEY
+                  name: billing-agent-opencode
+                  key: OPENCODE_KEY
                   optional: true
           ports:
             - containerPort: 8080
