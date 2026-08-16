@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from bi_agent.api import create_bi_router
 from bi_agent.application import BIBackend
+from billing_agent.app import create_app as create_billing_app
 from collections_agent.api import create_collections_router
 from collections_agent.application import CollectionsBackend
 from fastapi import FastAPI, HTTPException, Request
@@ -43,6 +44,7 @@ def create_app(
     application.include_router(create_bi_router(runtime_bi_backend))
     runtime_collections_backend = collections_backend or CollectionsBackend()
     application.include_router(create_collections_router(runtime_collections_backend))
+    application.mount("/api/billing", create_billing_app(api_prefix=""), name="billing-agent")
 
     @application.middleware("http")
     async def request_observability(

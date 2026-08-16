@@ -11,6 +11,7 @@ on:
       - compose.yaml
       - "Agente BI/**"
       - "Agente Cobranzas/**"
+      - "Agente_Facturacion/**"
       - "back/**"
       - "front/**"
   pull_request:
@@ -23,6 +24,7 @@ on:
       - compose.yaml
       - "Agente BI/**"
       - "Agente Cobranzas/**"
+      - "Agente_Facturacion/**"
       - "back/**"
       - "front/**"
   workflow_dispatch:
@@ -51,6 +53,7 @@ jobs:
             back/pyproject.toml
             Agente BI/BACK/pyproject.toml
             Agente Cobranzas/BACK/pyproject.toml
+            Agente_Facturacion/BACK/pyproject.toml
 
       - name: Install BI agent
         working-directory: "Agente BI/BACK"
@@ -58,6 +61,10 @@ jobs:
 
       - name: Install Collections agent
         working-directory: "Agente Cobranzas/BACK"
+        run: python -m pip install --disable-pip-version-check ".[dev]"
+
+      - name: Install Billing agent
+        working-directory: Agente_Facturacion/BACK
         run: python -m pip install --disable-pip-version-check ".[dev]"
 
       - name: Install shared project
@@ -98,6 +105,10 @@ jobs:
 
       - name: Test Collections agent
         working-directory: "Agente Cobranzas/BACK"
+        run: python -m pytest
+
+      - name: Test Billing agent
+        working-directory: Agente_Facturacion/BACK
         run: python -m pytest
 
   container:
@@ -145,6 +156,10 @@ jobs:
             http://127.0.0.1:18080/agents/collections/index.html \
             | grep --fixed-strings --quiet "Cobranzas y Recaudación"
 
+          curl --fail --silent --show-error \
+            http://127.0.0.1:18080/agents/billing/index.html \
+            | grep --fixed-strings --quiet "Billing Assurance"
+
           bi_status="$(curl --fail --silent --show-error \
             http://127.0.0.1:18080/api/bi/status)"
           python -c \
@@ -156,6 +171,12 @@ jobs:
           python -c \
             'import json,sys; payload=json.loads(sys.argv[1]); assert payload["status"] == "dataset_not_configured"' \
             "${collections_status}"
+
+          billing_status="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18080/api/billing/status)"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["status"] == "dataset_not_configured"' \
+            "${billing_status}"
 
           scenario="$(curl --fail --silent --show-error \
             http://127.0.0.1:18080/api/demo/scenario)"
@@ -194,6 +215,13 @@ jobs:
           grep --extended-regexp --quiet \
             'assets/app\.js\?v=[0-9a-f]{12}' <<< "${collections_homepage}"
 
+          billing_homepage="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18081/agents/billing/index.html)"
+          grep --fixed-strings --quiet "Billing Assurance" <<< "${billing_homepage}"
+          ! grep --fixed-strings --quiet "__ASSET_VERSION__" <<< "${billing_homepage}"
+          grep --extended-regexp --quiet \
+            'assets/app\.js\?v=[0-9a-f]{12}' <<< "${billing_homepage}"
+
           curl --fail --silent --show-error --head \
             http://127.0.0.1:18081/ \
             | tr -d '\r' \
@@ -218,6 +246,12 @@ jobs:
             | grep --ignore-case --fixed-strings --quiet \
               'cache-control: public, max-age=31536000, immutable'
 
+          curl --fail --silent --show-error --head \
+            'http://127.0.0.1:18081/agents/billing/assets/app.js?v=ci' \
+            | tr -d '\r' \
+            | grep --ignore-case --fixed-strings --quiet \
+              'cache-control: public, max-age=31536000, immutable'
+
           agents="$(curl --fail --silent --show-error \
             http://127.0.0.1:18081/api/agents)"
           python -c \
@@ -235,6 +269,23 @@ jobs:
           python -c \
             'import json,sys; payload=json.loads(sys.argv[1]); assert payload["status"] == "dataset_not_configured"' \
             "${collections_status}"
+
+          billing_status="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18081/api/billing/status)"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["status"] == "dataset_not_configured"' \
+            "${billing_status}"
+
+          billing_upload="$(curl --fail --silent --show-error \
+            --request POST http://127.0.0.1:18081/api/billing/datasets \
+            -F 'files=@back/tests/fixtures/billing/001_TBL_CLIENTES_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/billing/002_TBL_PLANTA_FIJA_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/billing/003_TBL_PLANTA_MOVIL_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/billing/005_TBL_FACTURAS_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/billing/006_TBL_NOTAS_CREDITO_B2B.csv;type=text/csv')"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["source_counts"]["invoices"] == 1' \
+            "${billing_upload}"
 
           collections_upload="$(curl --fail --silent --show-error \
             --request POST http://127.0.0.1:18081/api/collections/dataset \

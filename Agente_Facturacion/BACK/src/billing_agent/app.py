@@ -34,10 +34,22 @@ class ConversationRequest(BaseModel):
     context: ConversationContext = Field(default_factory=ConversationContext)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, api_prefix: str = "/api") -> FastAPI:
+    """Create the standalone app or a namespaced shared-backend sub-application."""
     runtime_settings = settings or Settings.from_environment()
+    normalized_prefix = api_prefix.rstrip("/")
+    if normalized_prefix and not normalized_prefix.startswith("/"):
+        raise ValueError("api_prefix debe ser una ruta absoluta.")
+
+    def api_path(path: str) -> str:
+        return f"{normalized_prefix}{path}"
+
     logging.basicConfig(level=runtime_settings.log_level)
-    application = FastAPI(title="SON-IA Billing Assurance", version="1.0.0", docs_url="/api/docs")
+    application = FastAPI(
+        title="SON-IA Billing Assurance",
+        version="1.0.0",
+        docs_url=api_path("/docs"),
+    )
     registry = DatasetRegistry(runtime_settings)
     application.state.dataset_registry = registry
     application.state.settings = runtime_settings
@@ -58,40 +70,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def infrastructure_health() -> dict[str, str]:
         return {"status": "ok", "service": "sonia-billing-back", "version": "1.0.0"}
 
-    @application.get("/api/status", tags=["billing"])
+    @application.get(api_path("/status"), tags=["billing"])
     async def status(dataset_id: str | None = None) -> dict[str, Any]:
-        record = registry.resolve(dataset_id)
+        try:
+            record = registry.resolve(dataset_id)
+        except KeyError:
+            if dataset_id not in {None, "default"}:
+                raise
+            return {
+                "status": "dataset_not_configured",
+                "agent": "billing",
+                "dataset_configured": False,
+                "llm_available": OpenAIRuntime().available,
+            }
         return {"status": "ok", "agent": "billing", "llm_available": OpenAIRuntime().available, **record.public_status()}
 
     def response(record: Any, payload: dict[str, Any]) -> dict[str, Any]:
         return {"dataset_id": record.dataset_id, "agent_response": payload, "presentation": presentation_for(payload)}
 
-    @application.get("/api/health", tags=["billing"])
+    @application.get(api_path("/health"), tags=["billing"])
     async def billing_health(dataset_id: str | None = None, as_of_date: str | None = None) -> dict[str, Any]:
         record = registry.resolve(dataset_id)
         return response(record, record.service.billing_health_snapshot(as_of_date))
 
-    @application.get("/api/customer", tags=["billing"])
+    @application.get(api_path("/customer"), tags=["billing"])
     async def customer(customer_id: str, account_id: str | None = None, dataset_id: str | None = None, as_of_date: str | None = None) -> dict[str, Any]:
         record = registry.resolve(dataset_id)
         return response(record, record.service.customer_billing_check(customer_id, account_id, as_of_date))
 
-    @application.get("/api/invoice", tags=["billing"])
+    @application.get(api_path("/invoice"), tags=["billing"])
     async def invoice(invoice_id: str, dataset_id: str | None = None, as_of_date: str | None = None) -> dict[str, Any]:
         record = registry.resolve(dataset_id)
         return response(record, record.service.invoice_quality_check(invoice_id, as_of_date))
 
-    @application.get("/api/gaps", tags=["billing"])
+    @application.get(api_path("/gaps"), tags=["billing"])
     async def gaps(dataset_id: str | None = None, as_of_date: str | None = None, customer_id: str | None = None, account_id: str | None = None) -> dict[str, Any]:
         record = registry.resolve(dataset_id)
         return response(record, record.service.billing_cycle_gaps(as_of_date, customer_id, account_id))
 
-    @application.get("/api/credit-notes", tags=["billing"])
+    @application.get(api_path("/credit-notes"), tags=["billing"])
     async def credit_notes(dataset_id: str | None = None, as_of_date: str | None = None, customer_id: str | None = None, account_id: str | None = None, invoice_id: str | None = None, materiality_threshold: Decimal = Query(default=Decimal("0.25"), ge=0, le=1)) -> dict[str, Any]:
         record = registry.resolve(dataset_id)
         return response(record, record.service.credit_note_review(as_of_date, customer_id, account_id, invoice_id, materiality_threshold))
 
-    @application.post("/api/conversation", tags=["billing"])
+    @application.post(api_path("/conversation"), tags=["billing"])
     async def conversation(body: ConversationRequest) -> dict[str, Any]:
         record = registry.resolve(body.dataset_id)
         context = SessionContext(
@@ -112,7 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         return result
 
-    @application.post("/api/datasets", status_code=201, tags=["datasets"])
+    @application.post(api_path("/datasets"), status_code=201, tags=["datasets"])
     async def upload_dataset(files: list[UploadFile] = File(...)) -> dict[str, object]:
         uploads: list[tuple[str, bytes]] = []
         accumulated = 0
@@ -125,11 +147,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             uploads.append((upload.filename or "", content))
         return registry.register_upload(uploads).public_status()
 
-    @application.get("/api/datasets/{dataset_id}/status", tags=["datasets"])
+    @application.get(api_path("/datasets/{dataset_id}/status"), tags=["datasets"])
     async def dataset_status(dataset_id: str) -> dict[str, object]:
         return registry.resolve(dataset_id).public_status()
 
-    @application.delete("/api/datasets/{dataset_id}", status_code=204, tags=["datasets"])
+    @application.delete(api_path("/datasets/{dataset_id}"), status_code=204, tags=["datasets"])
     async def delete_dataset(dataset_id: str) -> None:
         try:
             registry.delete(dataset_id)

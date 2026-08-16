@@ -108,11 +108,11 @@ Variables de seguridad y capacidad:
 
 El boundary `DatasetSource` permite sustituir CSV/ZIP por BD, API, lake o warehouse sin modificar frontend, runtime, tools ni contrato.
 
-## Contexto y OpenAI opcional
+## Contexto y OpenCode Go opcional
 
 `POST /api/conversation` recibe y devuelve `context`. El navegador conserva sus identificadores; el backend no comparte un `SessionContext` global ni necesita Redis. Dos navegadores no heredan cliente, cuenta o factura entre sí.
 
-Sin `OPENAI_API_KEY`, las cinco tools, router, explicaciones, handoffs y frontend funcionan de forma determinística. Si se configura, la key solo vive en BACK y `SONIA_BILLING_MODEL` usa `gpt-5` por defecto. Se mantienen `store: false`, `compact_for_llm` y `extract_output_text`. El proveedor no recibe CSV, ZIP, rutas temporales, filas crudas ni dataset completo. Ante cualquier fallo, se usa fallback determinístico.
+Sin `OPENCODE_KEY`, las cinco tools, router, explicaciones, handoffs y frontend funcionan de forma determinística. Si se configura, la key solo vive en BACK y `SONIA_BILLING_MODEL` usa `deepseek-v4-flash` por defecto. La selección usa una sola tool cerrada con un reintento acotado cuando la respuesta llega incompleta. El proveedor no recibe CSV, ZIP, rutas temporales, filas crudas ni dataset completo; los logs conservan etapa, latencia y tokens sin preguntas ni evidencia. Ante cualquier fallo, se usa fallback determinístico.
 
 Consultas de deuda/pago/mora/cobranza/recaudación devuelven `HANDOFF_RECOMMENDED` hacia `collections`; segmento/concentración/riesgo de recuperación hacia `bi`. No existe integración activa entre agentes en este entregable.
 
