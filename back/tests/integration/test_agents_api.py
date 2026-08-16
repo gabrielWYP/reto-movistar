@@ -63,6 +63,7 @@ def test_shared_backend_mounts_bi_router() -> None:
             "006_TBL_NOTAS_CREDITO_B2B.csv",
         ],
         "llm_available": False,
+        "llm": {"provider": "opencode-go", "model": "deepseek-v4-flash"},
         "tools": [
             "data_quality_report",
             "executive_snapshot",

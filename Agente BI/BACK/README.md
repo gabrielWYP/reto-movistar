@@ -26,6 +26,16 @@ El backend inicia sin dataset para permitir health checks. Los seis CSV pueden
 cargarse juntos o en varias solicitudes multipart; también se acepta un ZIP.
 El límite es 25 MiB y el contenido queda únicamente en RAM hasta reiniciar.
 
+## OpenCode Go
+
+El backend consume `https://opencode.ai/zen/go/v1/chat/completions` con
+`OPENCODE_KEY` y `deepseek-v4-flash` por defecto. No persiste la clave ni la
+expone en contratos HTTP. La IA selecciona una función autorizada y redacta la
+respuesta; los cálculos, validaciones y guardrails permanecen en Python.
+
+Para desarrollo, exporta `OPENCODE_KEY` en el entorno antes de iniciar Compose.
+No copies el valor a `.env.example`, Git, Dockerfiles o archivos del frontend.
+
 ## Pruebas
 
 ```powershell

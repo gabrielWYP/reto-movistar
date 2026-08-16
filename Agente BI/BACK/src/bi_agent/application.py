@@ -7,7 +7,7 @@ from typing import Any
 
 from .agent import ask, dispatch, validate_arguments
 from .data import missing_dataset_files, normalize_dataset_files
-from .llm_runtime import OpenAIRuntime
+from .llm_runtime import OpenCodeRuntime
 from .presentation import presentation_for
 from .prompting import prompt_metadata
 from .service import BIService
@@ -21,13 +21,13 @@ class BIBackend:
         self,
         *,
         service: BIService | None = None,
-        runtime: OpenAIRuntime | None = None,
+        runtime: OpenCodeRuntime | None = None,
     ) -> None:
         self._service = service
         self._dataset_files: dict[str, bytes] = {}
         self._dataset_bytes = 0
         self._dataset_source = "injected" if service is not None else None
-        self._runtime = runtime or OpenAIRuntime()
+        self._runtime = runtime or OpenCodeRuntime()
         self._service_lock = Lock()
 
     @property
@@ -38,6 +38,11 @@ class BIBackend:
     @property
     def llm_available(self) -> bool:
         return self._runtime.available
+
+    @property
+    def llm_metadata(self) -> dict[str, str]:
+        """Expose provider and model without leaking authentication state."""
+        return self._runtime.metadata()
 
     def dataset_status(self) -> dict[str, Any]:
         """Return non-sensitive metadata for the process-local dataset."""

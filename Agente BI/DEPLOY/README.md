@@ -22,8 +22,9 @@ No requiere PVC, `hostPath` ni object storage. `POST /api/bi/dataset` recibe los
 seis CSV o un ZIP, aplica límites de tamaño y conserva el contenido en RAM. Un
 reinicio o rollout elimina el dataset y obliga a cargarlo nuevamente.
 
-La clave OpenAI es opcional. Si se usa, debe proceder de un Secret llamado
-`bi-agent-openai`; nunca de ConfigMap, imagen, frontend o Git.
+La clave OpenCode Go debe proceder de un Secret llamado `bi-agent-opencode`,
+con la entrada `OPENCODE_KEY`; nunca de ConfigMap, imagen, frontend o Git. El
+modelo no secreto `deepseek-v4-flash` se define en el ConfigMap.
 
 No se incluye Ingress: la plataforma debe exponer únicamente `bi-front` según
 su convención. `bi-back` permanece como `ClusterIP` interno.

@@ -340,6 +340,7 @@ def ask(
         answer = _apply_question_guardrails(question, deterministic_narrative(payload))
         mode = "deterministic"
     result = AgentResult(answer, tool_name, arguments, payload, mode).to_dict()
-    if mode == "llm":
+    if mode == "llm" and runtime is not None:
         result["prompt"] = prompt_metadata()
+        result["llm"] = runtime.metadata()
     return result

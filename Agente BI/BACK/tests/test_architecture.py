@@ -33,6 +33,7 @@ def test_bi_frontend_is_a_pure_http_client() -> None:
     for forbidden in (
         "BIService",
         "OPENAI_API_KEY",
+        "OPENCODE_KEY",
         "CHARGE_TOTAL_AMOUNT",
         "MONTO_PAGADO",
         ".csv",
