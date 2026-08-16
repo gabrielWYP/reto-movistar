@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import threading
-import tempfile
 import unittest
 from decimal import Decimal
 from io import BytesIO
@@ -71,9 +70,8 @@ class UnitTests(unittest.TestCase):
     def test_fastapi_routes_and_dynamic_cutoff(self) -> None:
         if not DATASET:
             self.skipTest("SONIA_DATASET no configurado")
-        with tempfile.TemporaryDirectory() as temp:
-            client = TestClient(create_app(Settings(dataset_path=DATASET, upload_root=Path(temp))))
-            self.assertEqual(client.get("/health").status_code, 200)
+        client = TestClient(create_app(Settings(dataset_path=DATASET)))
+        self.assertEqual(client.get("/health").status_code, 200)
             status = client.get("/api/status").json()
             self.assertEqual(status["max_as_of_date"], "2026-08-07")
             paths = (

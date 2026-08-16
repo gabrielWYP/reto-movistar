@@ -9,8 +9,16 @@ from pathlib import Path
 from typing import Any
 
 from .contracts import AgentResponse
-from .data import load_dataset
-from .model import BillingModel, CreditNote, Invoice, ZERO, build_model, parse_date, source_ref
+from .data import BillingDataset, load_dataset
+from .model import (
+    ZERO,
+    BillingModel,
+    CreditNote,
+    Invoice,
+    build_model,
+    parse_date,
+    source_ref,
+)
 from .rules import (
     DATA_QUALITY,
     DETERMINISTIC,
@@ -26,6 +34,13 @@ from .rules import (
 class BillingService:
     def __init__(self, dataset_path: Path):
         self.model: BillingModel = build_model(load_dataset(dataset_path))
+
+    @classmethod
+    def from_dataset(cls, dataset: BillingDataset) -> BillingService:
+        """Create a service from an already validated in-memory dataset."""
+        instance = cls.__new__(cls)
+        instance.model = build_model(dataset)
+        return instance
 
     def _as_of(self, value: str | None) -> date:
         if value:

@@ -79,7 +79,7 @@ Los códigos técnicos y el JSON completo permanecen disponibles en paneles de t
 | POST | `/api/conversation` | Router cerrado, respuesta grounded y contexto explícito. |
 | POST | `/api/datasets` | Carga multipart de cinco CSV o un ZIP. |
 | GET | `/api/datasets/{dataset_id}/status` | Conteos y corte, sin rutas internas. |
-| DELETE | `/api/datasets/{dataset_id}` | Elimina un workspace temporal cargado. |
+| DELETE | `/api/datasets/{dataset_id}` | Libera el dataset temporal de la memoria del proceso. |
 
 Las cinco tools conservan `AgentResponse v1.0`: `contract_version`, `agent`, `operation`, `as_of_date`, `entity`, `status`, `metrics`, `findings`, `alerts`, `recommended_actions`, `evidence`, `data_quality`, `visualization_hints`, `analysis_scope`, `methodology` y `upstream_inputs`.
 
@@ -97,12 +97,12 @@ Fuentes Billing requeridas:
 
 Antes de construir `BillingService` se validan: cantidad, nombres reconocidos, extensión, archivo no vacío, tamaño, encoding, delimitador, headers, columnas mínimas y estructura. ZIP valida firma, límite descomprimido y rechaza rutas absolutas o `..`. CSV se trata exclusivamente como datos.
 
-Cada carga recibe un `dataset_id` aleatorio. Cada ID mantiene su propio `BillingService`; no existe un `CURRENT_DATASET` mutable. Los uploads viven temporalmente en `SONIA_UPLOAD_ROOT` (por defecto, `/tmp/sonia-billing` en contenedor), admiten DELETE y TTL. Se pierden al reiniciar el pod. Las respuestas públicas nunca exponen el workspace.
+Cada carga recibe un `dataset_id` aleatorio. Cada ID mantiene su propio `BillingService`; no existe un `CURRENT_DATASET` mutable. Los CSV y ZIP se validan desde bytes y el modelo resultante vive exclusivamente en memoria del proceso: no se escriben archivos temporales. Los registros admiten DELETE y TTL, y se pierden al reiniciar el pod.
 
 Variables de seguridad y capacidad:
 
 - `SONIA_MAX_UPLOAD_MB` (20 por defecto).
-- `SONIA_MAX_UNCOMPRESSED_MB` (48 por defecto, compatible con `/tmp` de 64 MiB de K3S).
+- `SONIA_MAX_UNCOMPRESSED_MB` (48 por defecto).
 - `SONIA_MAX_UPLOAD_FILES` (5 por defecto).
 - `SONIA_DATASET_TTL_SECONDS` (4 horas por defecto).
 

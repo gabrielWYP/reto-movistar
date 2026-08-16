@@ -6,6 +6,7 @@ import csv
 import io
 import re
 import zipfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -124,9 +125,9 @@ def _safe_zip_members(archive: zipfile.ZipFile) -> dict[str, str]:
     return members
 
 
-def _read_zip(path: Path) -> dict[str, list[dict[str, str]]]:
+def _read_zip_content(content: bytes) -> dict[str, list[dict[str, str]]]:
     try:
-        with zipfile.ZipFile(path) as archive:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
             members = _safe_zip_members(archive)
             missing = [filename for filename in TABLE_FILES.values() if filename.lower() not in members]
             if missing:
@@ -141,6 +142,29 @@ def _read_zip(path: Path) -> dict[str, list[dict[str, str]]]:
         raise DatasetValidationError("El archivo ZIP no es válido.") from error
 
 
+def load_dataset_bytes(contents: Mapping[str, bytes]) -> BillingDataset:
+    """Build a validated dataset directly from canonical CSV payloads."""
+    normalized = {name.lower(): content for name, content in contents.items()}
+    expected = {filename.lower() for filename in TABLE_FILES.values()}
+    missing = sorted(expected - set(normalized))
+    unknown = sorted(set(normalized) - expected)
+    if missing or unknown:
+        raise DatasetValidationError(
+            "Dataset incompatible: las fuentes no corresponden al catálogo Billing.",
+            missing=missing + unknown,
+        )
+    decoded = {
+        logical: _decode_csv(normalized[filename.lower()], logical)
+        for logical, filename in TABLE_FILES.items()
+    }
+    return BillingDataset(**decoded)
+
+
+def load_dataset_zip_bytes(content: bytes) -> BillingDataset:
+    """Build a validated dataset from an in-memory ZIP payload."""
+    return BillingDataset(**_read_zip_content(content))
+
+
 def load_dataset(path: Path) -> BillingDataset:
     """Load a CSV directory or ZIP without deduplicating or altering source values."""
     if path.is_dir():
@@ -149,14 +173,14 @@ def load_dataset(path: Path) -> BillingDataset:
             raise DatasetValidationError(
                 "Dataset incompatible: faltan fuentes obligatorias.", missing=missing,
             )
-        contents = {
-            logical: _decode_csv((path / filename).read_bytes(), logical)
-            for logical, filename in TABLE_FILES.items()
+        source_bytes = {
+            filename: (path / filename).read_bytes()
+            for filename in TABLE_FILES.values()
         }
+        return load_dataset_bytes(source_bytes)
     elif path.is_file() and path.suffix.lower() == ".zip":
-        contents = _read_zip(path)
+        return load_dataset_zip_bytes(path.read_bytes())
     else:
         raise DatasetValidationError(
             "dataset debe ser un directorio con los cinco CSV de Facturación o un archivo .zip"
         )
-    return BillingDataset(**contents)

@@ -132,7 +132,7 @@ class BillingUserStoryAcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             default = write_sources(root / "default", 1)
-            registry = DatasetRegistry(Settings(dataset_path=default, upload_root=root / "uploads"))
+            registry = DatasetRegistry(Settings(dataset_path=default))
             record = registry.register_upload(list(source_bytes(2).items()))
             self.assertNotEqual(record.dataset_id, "default")
             self.assertEqual(record.service.billing_health_snapshot()["metrics"]["invoice_documents"], 2)

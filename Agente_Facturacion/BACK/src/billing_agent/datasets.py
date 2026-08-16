@@ -1,18 +1,22 @@
-"""Secure, process-local registry for isolated temporary Billing datasets."""
+"""Secure, process-local registry for isolated in-memory Billing datasets."""
 
 from __future__ import annotations
 
 import io
 import secrets
-import shutil
 import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .data import DatasetValidationError, TABLE_FILES
-from .service import BillingService
 from .config import Settings
+from .data import (
+    TABLE_FILES,
+    DatasetValidationError,
+    load_dataset_bytes,
+    load_dataset_zip_bytes,
+)
+from .service import BillingService
 
 
 @dataclass(slots=True)
@@ -20,7 +24,6 @@ class DatasetRecord:
     dataset_id: str
     origin: str
     service: BillingService
-    workspace: Path | None
     created_at: float
     expires_at: float | None
 
@@ -36,7 +39,7 @@ class DatasetRecord:
                 {"key": key, "filename": TABLE_FILES[key], "status": "VALID", "records": counts[key]}
                 for key in TABLE_FILES
             ],
-            "temporary": self.workspace is not None,
+            "temporary": self.origin == "Dataset cargado",
         }
 
 
@@ -45,15 +48,13 @@ class DatasetRegistry:
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.upload_root = settings.upload_root.resolve()
         self._records: dict[str, DatasetRecord] = {}
         self._default_error: DatasetValidationError | None = None
-        self.upload_root.mkdir(parents=True, exist_ok=True)
         if settings.dataset_path:
             try:
                 self._records["default"] = DatasetRecord(
                     "default", "Dataset predeterminado", BillingService(settings.dataset_path),
-                    None, time.time(), None,
+                    time.time(), None,
                 )
             except (OSError, ValueError) as error:
                 self._default_error = error if isinstance(error, DatasetValidationError) else DatasetValidationError(str(error))
@@ -132,50 +133,36 @@ class DatasetRegistry:
             raise DatasetValidationError("Debes cargar exactamente las cinco fuentes CSV de Facturación.")
 
         dataset_id = secrets.token_urlsafe(18)
-        workspace = (self.upload_root / dataset_id).resolve()
-        if workspace.parent != self.upload_root:
-            raise DatasetValidationError("No se pudo crear un workspace seguro.")
-        workspace.mkdir(parents=False, exist_ok=False)
+        if is_zip:
+            _, content = sanitized[0]
+            self._validate_zip_limits(content)
+            dataset = load_dataset_zip_bytes(content)
+        else:
+            by_name = {name.lower(): content for name, content in sanitized}
+            missing = [name for name in TABLE_FILES.values() if name.lower() not in by_name]
+            unknown = [name for name, _ in sanitized if name.lower() not in {value.lower() for value in TABLE_FILES.values()}]
+            if missing or unknown:
+                raise DatasetValidationError(
+                    "Los nombres de las fuentes no corresponden al catálogo Billing.",
+                    missing=missing + unknown,
+                )
+            dataset = load_dataset_bytes(by_name)
         try:
-            if is_zip:
-                name, content = sanitized[0]
-                self._validate_zip_limits(content)
-                source_path = workspace / "dataset.zip"
-                source_path.write_bytes(content)
-            else:
-                by_name = {name.lower(): content for name, content in sanitized}
-                missing = [name for name in TABLE_FILES.values() if name.lower() not in by_name]
-                unknown = [name for name, _ in sanitized if name.lower() not in {value.lower() for value in TABLE_FILES.values()}]
-                if missing or unknown:
-                    raise DatasetValidationError(
-                        "Los nombres de las fuentes no corresponden al catálogo Billing.",
-                        missing=missing + unknown,
-                    )
-                for canonical in TABLE_FILES.values():
-                    (workspace / canonical).write_bytes(by_name[canonical.lower()])
-                source_path = workspace
-            try:
-                service = BillingService(source_path)
-            except DatasetValidationError:
-                raise
-            except (KeyError, OSError, ValueError) as error:
-                raise DatasetValidationError(f"La estructura o los valores del dataset son incompatibles: {error}") from error
-            now = time.time()
-            record = DatasetRecord(
-                dataset_id, "Dataset cargado", service, workspace, now,
-                now + self.settings.dataset_ttl_seconds if self.settings.dataset_ttl_seconds > 0 else None,
-            )
-            self._records[dataset_id] = record
-            return record
-        except Exception:
-            shutil.rmtree(workspace, ignore_errors=True)
+            service = BillingService.from_dataset(dataset)
+        except DatasetValidationError:
             raise
+        except (KeyError, OSError, ValueError) as error:
+            raise DatasetValidationError(f"La estructura o los valores del dataset son incompatibles: {error}") from error
+        now = time.time()
+        record = DatasetRecord(
+            dataset_id, "Dataset cargado", service, now,
+            now + self.settings.dataset_ttl_seconds if self.settings.dataset_ttl_seconds > 0 else None,
+        )
+        self._records[dataset_id] = record
+        return record
 
     def delete(self, dataset_id: str) -> None:
         if dataset_id == "default":
             raise ValueError("El dataset predeterminado no se elimina por API.")
-        record = self._records.pop(dataset_id, None)
-        if not record:
+        if not self._records.pop(dataset_id, None):
             raise KeyError("Dataset no encontrado o expirado.")
-        if record.workspace and record.workspace.parent == self.upload_root:
-            shutil.rmtree(record.workspace, ignore_errors=True)
