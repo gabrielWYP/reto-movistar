@@ -106,6 +106,59 @@ class CollectionsContractTests(unittest.TestCase):
         ):
             runtime.select_tool("Resume la cartera", "2026-08-07")
 
+    def test_runtime_retries_an_incomplete_selection_and_accounts_for_usage(self):
+        responses = [
+            {
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {"content": ""},
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 400,
+                    "total_tokens": 500,
+                },
+            },
+            {
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "call-retry",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "portfolio_snapshot",
+                                        "arguments": "{}",
+                                    },
+                                }
+                            ]
+                        },
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 110,
+                    "completion_tokens": 30,
+                    "total_tokens": 140,
+                },
+            },
+        ]
+        post = Mock(side_effect=responses)
+        runtime = OpenCodeRuntime(post=post)
+
+        with patch.dict(os.environ, {"OPENCODE_KEY": "test-only"}, clear=True):
+            selected = runtime.select_tool("Resume la cartera", "2026-08-07")
+
+        self.assertEqual(selected["tool_name"], "portfolio_snapshot")
+        self.assertEqual(selected["usage"]["total_tokens"], 640)
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual(post.call_args_list[0].args[0]["max_tokens"], 400)
+        self.assertEqual(post.call_args_list[1].args[0]["max_tokens"], 800)
+        self.assertEqual(post.call_args_list[1].args[0]["tool_choice"], "auto")
+
     def test_argument_validation_rejects_unknown_fields_and_overrides_cutoff(self):
         with self.assertRaisesRegex(ValueError, "parámetros no autorizados"):
             validate_arguments("portfolio_snapshot", {"sql": "SELECT 1"})

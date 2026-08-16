@@ -8,7 +8,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
 from fastapi import FastAPI
@@ -677,6 +677,50 @@ class BICoreTests(unittest.TestCase):
         self.assertIn("function", calls[0][0]["tools"][0])
         self.assertEqual(calls[0][0]["tool_choice"], "auto")
         self.assertEqual(calls[0][1], "test")
+
+    def test_opencode_runtime_retries_an_incomplete_tool_selection(self):
+        responses = [
+            {
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {"role": "assistant", "content": ""},
+                    }
+                ],
+                "usage": {"completion_tokens": 400},
+            },
+            {
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "call_retry",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "executive_snapshot",
+                                        "arguments": "{}",
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            },
+        ]
+        post = Mock(side_effect=responses)
+        runtime = OpenCodeRuntime(post=post)
+
+        with patch.dict("os.environ", {"OPENCODE_KEY": "test"}, clear=True):
+            choice = runtime.select_tool("resume la operación", "2026-07-31")
+
+        self.assertEqual(choice["tool_name"], "executive_snapshot")
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual(post.call_args_list[0].args[0]["max_tokens"], 400)
+        self.assertEqual(post.call_args_list[1].args[0]["max_tokens"], 800)
+        self.assertEqual(post.call_args_list[1].args[0]["tool_choice"], "auto")
 
     def test_opencode_http_client_sets_cloudflare_safe_headers(self):
         class StubResponse:

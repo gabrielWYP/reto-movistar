@@ -33,6 +33,13 @@ El backend consume `https://opencode.ai/zen/go/v1/chat/completions` con
 expone en contratos HTTP. La IA selecciona una función autorizada y redacta la
 respuesta; los cálculos, validaciones y guardrails permanecen en Python.
 
+Las consultas admitidas se limitan a resumen ejecutivo, concentración de riesgo,
+recuperación, hallazgos gerenciales y calidad de datos. Si la primera respuesta
+del proveedor no contiene exactamente una tool válida, el selector reintenta una
+vez con un presupuesto acotado; después conserva el fallback determinístico. Los
+logs registran intento, `finish_reason`, cantidad de tools, latencia y tokens, sin
+persistir preguntas ni evidencia del dataset.
+
 Para desarrollo, exporta `OPENCODE_KEY` en el entorno antes de iniciar Compose.
 No copies el valor a `.env.example`, Git, Dockerfiles o archivos del frontend.
 
