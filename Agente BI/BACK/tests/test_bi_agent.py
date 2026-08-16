@@ -713,7 +713,7 @@ class BICoreTests(unittest.TestCase):
             ):
                 OpenCodeRuntime._http_post({"model": "test"}, "secret")
 
-    def test_opencode_probe_requires_a_real_text_completion(self):
+    def test_opencode_probe_accepts_visible_completion(self):
         response = {"choices": [{"message": {"role": "assistant", "content": "OK"}}]}
         calls = []
 
@@ -726,6 +726,43 @@ class BICoreTests(unittest.TestCase):
             runtime.probe()
         self.assertEqual(calls[0][0]["max_tokens"], 64)
         self.assertEqual(calls[0][1], "test")
+
+    def test_opencode_probe_accepts_reasoning_completion(self):
+        response = {
+            "choices": [
+                {
+                    "finish_reason": "length",
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "reasoning_content": "We need to respond with OK.",
+                    },
+                }
+            ]
+        }
+        runtime = OpenCodeRuntime(post=lambda payload, key: response)
+        with patch.dict("os.environ", {"OPENCODE_KEY": "test"}, clear=True):
+            runtime.probe()
+
+    def test_opencode_probe_rejects_empty_completion(self):
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "reasoning_content": "",
+                    }
+                }
+            ]
+        }
+        runtime = OpenCodeRuntime(post=lambda payload, key: response)
+        with patch.dict("os.environ", {"OPENCODE_KEY": "test"}, clear=True):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "no devolvió contenido ni razonamiento",
+            ):
+                runtime.probe()
 
     def test_presentation_labels_metrics_without_changing_numeric_values_or_response(self):
         response = self.service.risk_concentration(

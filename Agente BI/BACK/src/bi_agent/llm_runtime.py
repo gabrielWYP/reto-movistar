@@ -196,9 +196,10 @@ class OpenCodeRuntime:
             },
             "connection_probe",
         )
-        content = self._message(response).get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise RuntimeError("OpenCode Go no respondió al probe de conectividad.")
+        message = self._message(response)
+        completion_signals = (message.get("content"), message.get("reasoning_content"))
+        if not any(isinstance(value, str) and value.strip() for value in completion_signals):
+            raise RuntimeError("OpenCode Go no devolvió contenido ni razonamiento en el probe.")
 
     def interpret(self, question: str, tool_result: dict[str, Any]) -> str:
         """Generate the visible answer from compact deterministic evidence only."""
