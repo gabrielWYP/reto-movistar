@@ -19,6 +19,7 @@ from .prompting import SYSTEM_PROMPT
 API_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 REQUEST_TIMEOUT_SECONDS = 60
 CLIENT_USER_AGENT = "sonia-collections/1.0"
+SELECTION_RETRY_MAX_TOKENS = 800
 logger = logging.getLogger(__name__)
 
 
@@ -160,27 +161,23 @@ class OpenCodeRuntime:
             raise RuntimeError("OpenCode Go no devolvió un mensaje válido.")
         return cast(dict[str, Any], message)
 
-    def select_tool(self, question: str, as_of_date: str | None) -> dict[str, Any]:
-        """Require DeepSeek to select exactly one deterministic tool."""
-        cutoff = as_of_date or "último evento disponible en el dataset"
-        response = self._invoke(
-            {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": f"Fecha de corte: {cutoff}\nPregunta: {question}",
-                    },
-                ],
-                "tools": self._chat_tools(),
-                "tool_choice": "auto",
-                "temperature": 0,
-                "max_tokens": self._settings.max_selection_tokens,
-            },
-            "tool_selection",
-        )
-        calls = self._message(response).get("tool_calls")
+    @staticmethod
+    def _selection_diagnostics(response: dict[str, Any]) -> dict[str, Any]:
+        """Return safe tool-selection metadata without prompts or model content."""
+        choices = response.get("choices")
+        choice = choices[0] if isinstance(choices, list) and len(choices) == 1 else None
+        message = choice.get("message") if isinstance(choice, dict) else None
+        calls = message.get("tool_calls") if isinstance(message, dict) else None
+        finish_reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+        return {
+            "finish_reason": finish_reason if isinstance(finish_reason, str) else "unknown",
+            "tool_call_count": len(calls) if isinstance(calls, list) else 0,
+        }
+
+    @staticmethod
+    def _parse_selection(response: dict[str, Any]) -> dict[str, Any]:
+        """Parse exactly one provider-selected Collections tool and its JSON arguments."""
+        calls = OpenCodeRuntime._message(response).get("tool_calls")
         if not isinstance(calls, list) or len(calls) != 1:
             raise RuntimeError(
                 "El modelo debe seleccionar exactamente una tool de Cobranzas autorizada."
@@ -196,8 +193,85 @@ class OpenCodeRuntime:
         return {
             "tool_name": function.get("name"),
             "arguments": arguments,
-            "usage": self._usage(response),
         }
+
+    def _selection_payload(
+        self,
+        question: str,
+        cutoff: str,
+        *,
+        retry: bool,
+    ) -> dict[str, Any]:
+        """Build a bounded tool-only request compatible with DeepSeek thinking mode."""
+        instruction = (
+            "REINTENTO: devuelve exactamente una sola llamada a una tool autorizada. "
+            "No respondas con texto, no expliques tu elección y no llames varias tools."
+            if retry
+            else "Selecciona exactamente una sola tool autorizada para responder. "
+            "No respondas con texto ni expliques tu elección."
+        )
+        retry_tokens = min(
+            max(self._settings.max_selection_tokens * 2, self._settings.max_selection_tokens),
+            SELECTION_RETRY_MAX_TOKENS,
+        )
+        return {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": f"{instruction}\nFecha de corte: {cutoff}\nPregunta: {question}",
+                },
+            ],
+            "tools": self._chat_tools(),
+            # DeepSeek thinking mode rejects tool_choice="required" at this provider.
+            "tool_choice": "auto",
+            "temperature": 0,
+            "max_tokens": retry_tokens if retry else self._settings.max_selection_tokens,
+        }
+
+    def select_tool(self, question: str, as_of_date: str | None) -> dict[str, Any]:
+        """Require one deterministic tool, retrying one invalid selection."""
+        cutoff = as_of_date or "último evento disponible en el dataset"
+        total_usage: dict[str, int] = {}
+        last_error: RuntimeError | None = None
+        for attempt, retry in enumerate((False, True), start=1):
+            stage = "tool_selection_retry" if retry else "tool_selection"
+            response = self._invoke(
+                self._selection_payload(question, cutoff, retry=retry),
+                stage,
+            )
+            for key, value in self._usage(response).items():
+                total_usage[key] = total_usage.get(key, 0) + value
+            diagnostics = self._selection_diagnostics(response)
+            try:
+                selection = self._parse_selection(response)
+            except RuntimeError as error:
+                last_error = error
+                logger.warning(
+                    "collections_llm_tool_selection_invalid",
+                    extra={
+                        "provider": "opencode-go",
+                        "model": self.model,
+                        "attempt": attempt,
+                        **diagnostics,
+                    },
+                )
+                continue
+            logger.info(
+                "collections_llm_tool_selection_valid",
+                extra={
+                    "provider": "opencode-go",
+                    "model": self.model,
+                    "attempt": attempt,
+                    **diagnostics,
+                },
+            )
+            return {**selection, "usage": total_usage}
+        raise RuntimeError(
+            "El modelo no seleccionó exactamente una tool de Cobranzas autorizada "
+            "tras dos intentos."
+        ) from last_error
 
     def interpret(self, question: str, tool_result: dict[str, Any]) -> tuple[str, dict[str, int]]:
         """Interpret compact deterministic evidence without exposing the full ledger."""
