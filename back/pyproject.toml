@@ -13,13 +13,13 @@ authors = [{ name = "SON-IA Team" }]
 dependencies = [
   "fastapi>=0.115,<1.0",
   "pydantic>=2.10,<3.0",
+  "python-multipart>=0.0.20,<1.0",
   "uvicorn[standard]>=0.34,<1.0",
 ]
 
 [project.scripts]
 sonia = "sonia.__main__:main"
 sonia-billing = "sonia.agents.billing.cli:main"
-sonia-collections = "sonia.agents.collections.cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -39,7 +39,7 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]
-extend-exclude = ["src/sonia/agents", "tests/agents"]
+extend-exclude = ["src/sonia/agents/billing", "tests/agents"]
 line-length = 100
 target-version = "py312"
 
@@ -49,12 +49,11 @@ select = ["E", "F", "I", "B", "UP", "ANN"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = ["src", "../Agente BI/BACK/src"]
+mypy_path = ["src", "../Agente BI/BACK/src", "../Agente Cobranzas/BACK/src"]
 packages = ["sonia"]
 
 [[tool.mypy.overrides]]
 module = [
   "sonia.agents.billing.*",
-  "sonia.agents.collections.*",
 ]
 ignore_errors = true

@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sonia-collections-agent"
+version = "1.0.0"
+description = "Deterministic, evidence-first Collections and Revenue Reconciliation Agent for SON-IA."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "pydantic>=2.10,<3.0",
+  "python-multipart>=0.0.20,<1.0",
+  "uvicorn[standard]>=0.34,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1.0",
+  "mypy>=1.15,<2.0",
+  "pytest>=8.3,<9.0",
+  "pytest-cov>=6.0,<7.0",
+  "ruff>=0.11,<1.0",
+]
+
+[project.scripts]
+sonia-collections = "collections_agent.cli:main"
+sonia-collections-api = "collections_agent.__main__:main"
+
+[tool.setuptools]
+packages = ["collections_agent", "collections_agent_prompts"]
+package-dir = {collections_agent = "src/collections_agent", collections_agent_prompts = "prompts"}
+include-package-data = true
+
+[tool.setuptools.package-data]
+collections_agent_prompts = ["*.md"]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --disable-warnings"
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = ["official_dataset: regression against the official hackathon dataset"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ANN"]
+ignore = ["E501", "ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["ANN"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = ["src"]
+packages = ["collections_agent"]

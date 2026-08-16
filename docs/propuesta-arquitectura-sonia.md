@@ -13,7 +13,7 @@ en microservicios independientes.
 | Arquitectura | SPA estática en Nginx y backend modular en Python/FastAPI, desplegados en dos pods. |
 | Entrada pública | Un único host `reto-movistar.ikigais.app`, puerto interno `8080`. |
 | Orquestación | Supervisor con máquina de estados explícita; el LLM propone, pero no decide transacciones irreversibles. |
-| Agentes | Facturación, Cobranzas/Conciliación y BI, implementados como módulos internos del backend. |
+| Agentes | Facturación, Cobranzas/Conciliación y BI, montados como módulos o paquetes instalables dentro del backend compartido. |
 | Intervención humana | Obligatoria antes de emitir una factura, aplicar un pago o aceptar una excepción material. |
 | Datos | Solo datos ficticios o anonimizados durante el hackatón. |
 | Integraciones | Adaptadores simulados detrás de interfaces para facturación, correo, banco y fuentes SQL. |
@@ -178,22 +178,27 @@ reto-movistar/
 ├── front/
 │   ├── agents/
 │   │   ├── billing/
-│   │   ├── collections/
-│   │   └── bi/
+│   │   ├── collections/  # adaptador de navegación
+│   │   └── bi/           # adaptador de navegación
 │   ├── assets/
 │   └── Dockerfile
 ├── back/
 │   ├── src/sonia/
 │   │   ├── agents/
-│   │   │   ├── billing/
-│   │   │   ├── collections/
-│   │   │   └── bi/
+│   │   │   └── billing/
 │   │   ├── application/
 │   │   ├── domain/
 │   │   └── entrypoints/
 │   ├── tests/
 │   ├── Dockerfile
 │   └── pyproject.toml
+├── Agente Cobranzas/
+│   ├── BACK/src/collections_agent/
+│   └── FRONT/
+├── Agente BI/
+│   ├── BACK/src/bi_agent/
+│   ├── FRONT/
+│   └── DEPLOY/
 ├── scripts/
 ├── Dockerfile
 ├── compose.yaml
@@ -211,7 +216,7 @@ El equipo recomendado tiene un responsable técnico y tres responsables funciona
 |---|---|---|
 | Responsable técnico | Arquitectura, API, agentes, seguridad, CI/CD e integración. | `back/`, `front/`, `.github/`, `Dockerfile`, `compose.yaml`. |
 | Persona 1 - Facturación | Proceso PxQ, reglas, excepciones y criterios de aprobación. | `business/01-facturacion/`, casos sintéticos relacionados. |
-| Persona 2 - Cobranzas/Recaudo | Mensajes, pagos, conciliaciones, quiebres y prioridades. | `business/02-cobranzas-recaudo/`, casos sintéticos relacionados. |
+| Persona 2 - Cobranzas/Recaudo | Mensajes, pagos, conciliaciones, quiebres y prioridades. | `Agente Cobranzas/`, `business/02-cobranzas-recaudo/` y casos sintéticos relacionados. |
 | Persona 3 - Demo/Calidad | Journey, UX, criterios de aceptación, evidencias y pitch. | `business/03-demo-calidad/`, `evals/rubrics/`, documentación. |
 
 ### Flujo simple para colaboradores no técnicos

@@ -7,6 +7,8 @@ COPY front/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY front/index.html /usr/share/nginx/html/index.html
 COPY front/assets /usr/share/nginx/html/assets
 COPY front/agents /usr/share/nginx/html/agents
+COPY ["Agente Cobranzas/FRONT/index.html", "/usr/share/nginx/html/agents/collections/index.html"]
+COPY ["Agente Cobranzas/FRONT/assets", "/usr/share/nginx/html/agents/collections/assets"]
 COPY ["Agente BI/FRONT/index.html", "/usr/share/nginx/html/bi/index.html"]
 COPY ["Agente BI/FRONT/assets", "/usr/share/nginx/html/bi/assets"]
 
@@ -21,6 +23,8 @@ RUN asset_version="$(find /usr/share/nginx/html/assets /usr/share/nginx/html/age
       | cut -c1-12)" \
     && sed -i "s/__ASSET_VERSION__/${asset_version}/g" \
       /usr/share/nginx/html/index.html \
+      /usr/share/nginx/html/agents/collections/config.js \
+      /usr/share/nginx/html/agents/collections/index.html \
       /usr/share/nginx/html/bi/index.html
 
 USER 101
