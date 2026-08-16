@@ -62,9 +62,7 @@ def test_shared_backend_mounts_collections_router() -> None:
     )
     with TestClient(app) as client:
         status = client.get("/api/collections/status")
-        portfolio = client.get(
-            "/api/collections/portfolio", params={"as_of_date": "2026-08-07"}
-        )
+        portfolio = client.get("/api/collections/portfolio", params={"as_of_date": "2026-08-07"})
 
     assert status.status_code == 200
     assert status.json()["dataset_configured"] is True
