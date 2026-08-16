@@ -7,6 +7,11 @@ Variables principales: `SONIA_DATASET`, `SONIA_HOST`, `SONIA_PORT`, `SONIA_UPLOA
 Ejecución local desde la raíz:
 
 ```powershell
-$env:PYTHONPATH = "back/src"
-python -m sonia
+cd .\Agente_Facturacion\BACK
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+$env:SONIA_DATASET = "RUTA_DATASET"
+.\.venv\Scripts\python.exe -m billing_agent
 ```
+
+Pruebas: `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`.

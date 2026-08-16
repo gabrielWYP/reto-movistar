@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: billing-agent-config
+data:
+  SONIA_HOST: "0.0.0.0"
+  SONIA_PORT: "8080"
+  SONIA_LOG_LEVEL: "INFO"
+  SONIA_DATASET: "/data"
+  SONIA_UPLOAD_ROOT: "/tmp/sonia-billing"
+  SONIA_MAX_UPLOAD_MB: "20"
+  SONIA_MAX_UNCOMPRESSED_MB: "48"
+  SONIA_MAX_UPLOAD_FILES: "5"
+  SONIA_DATASET_TTL_SECONDS: "14400"
+  SONIA_BILLING_MODEL: "gpt-5"

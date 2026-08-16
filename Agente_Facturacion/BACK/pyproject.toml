@@ -16,8 +16,8 @@ dependencies = [
 ]
 
 [project.scripts]
-sonia-billing = "sonia.agents.billing.cli:main"
-sonia-billing-back = "sonia.__main__:main"
+sonia-billing = "billing_agent.cli:main"
+sonia-billing-back = "billing_agent.__main__:main"
 
 [project.optional-dependencies]
 dev = ["httpx>=0.28,<1.0", "pytest>=8.3,<9.0"]

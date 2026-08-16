@@ -11,12 +11,12 @@ WORKDIR /app
 RUN groupadd --gid 1001 sonia \
     && useradd --uid 1001 --gid sonia --no-create-home --shell /usr/sbin/nologin sonia
 
-COPY back/pyproject.toml back/README.md LICENSE ./
-COPY back/src ./src
+COPY BACK/pyproject.toml BACK/README.md ./
+COPY BACK/src ./src
 RUN pip install --no-cache-dir .
 
 USER 1001:1001
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
-CMD ["python", "-m", "sonia"]
+CMD ["python", "-m", "billing_agent"]

@@ -4,7 +4,7 @@ import io
 import zipfile
 from pathlib import Path
 
-from sonia.agents.billing.data import TABLE_FILES
+from billing_agent.data import TABLE_FILES
 
 
 def source_bytes(invoice_count: int = 1, marker: str = "SAFE_MARKER") -> dict[str, bytes]:

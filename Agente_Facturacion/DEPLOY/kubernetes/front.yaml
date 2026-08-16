@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-front
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-front
+  template:
+    metadata:
+      labels:
+        app: billing-front
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: web
+          image: ghcr.io/gabrielwyp/sonia-billing-front:replace-with-tag
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: BACKEND_HOST
+              value: billing-back
+            - name: BACKEND_PORT
+              value: "8080"
+          ports:
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+            - name: temporary
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-config
+          emptyDir: {}
+        - name: temporary
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-front
+spec:
+  type: ClusterIP
+  selector:
+    app: billing-front
+  ports:
+    - port: 8080
+      targetPort: 8080

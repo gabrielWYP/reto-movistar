@@ -14,13 +14,13 @@ from urllib.request import urlopen
 from fastapi.testclient import TestClient
 
 from dataset_fixtures import write_sources
-from sonia.agents.billing import BillingAgentRuntime, BillingService, SessionContext
-from sonia.agents.billing.openai_runtime import OpenAIRuntime
-from sonia.app import create_app
-from sonia.config import Settings
+from billing_agent import BillingAgentRuntime, BillingService, SessionContext
+from billing_agent.openai_runtime import OpenAIRuntime
+from billing_agent.app import create_app
+from billing_agent.config import Settings
 
 
-REPO = Path(__file__).resolve().parents[2]
+AGENT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class BillingArchitectureTests(unittest.TestCase):
@@ -61,20 +61,21 @@ class BillingArchitectureTests(unittest.TestCase):
         self.assertNotIn("Traceback", malformed.text)
 
     def test_front_and_back_are_physically_separate(self) -> None:
-        self.assertTrue((REPO / "front" / "index.html").is_file())
-        self.assertTrue((REPO / "back" / "src" / "sonia" / "app.py").is_file())
-        self.assertFalse((REPO / "src" / "billing_agent" / "web_app.py").exists())
-        python_sources = "\n".join(path.read_text("utf-8") for path in (REPO / "back" / "src").rglob("*.py"))
+        self.assertTrue((AGENT_ROOT / "FRONT" / "index.html").is_file())
+        self.assertTrue((AGENT_ROOT / "BACK" / "src" / "billing_agent" / "app.py").is_file())
+        self.assertFalse((AGENT_ROOT.parent / "back").exists())
+        self.assertFalse((AGENT_ROOT.parent / "front").exists())
+        python_sources = "\n".join(path.read_text("utf-8") for path in (AGENT_ROOT / "BACK" / "src").rglob("*.py"))
         self.assertNotIn("PAGE =", python_sources)
 
     def test_frontend_contains_no_business_rules_secrets_or_backend_address(self) -> None:
         frontend = "\n".join(
-            path.read_text("utf-8") for path in (REPO / "front").rglob("*")
+            path.read_text("utf-8") for path in (AGENT_ROOT / "FRONT").rglob("*")
             if path.is_file() and path.suffix.lower() in {".html", ".css", ".js", ".py", ".md", ".template"}
         )
         for forbidden in ("OPENAI_API_KEY", "MATERIAL_MEDIUM", "TOLERANCE =", "Decimal(", "http://127.0.0.1:8503", "C:/Users/", "C:\\Users\\"):
             self.assertNotIn(forbidden, frontend)
-        app_js = (REPO / "front" / "src" / "app.js").read_text("utf-8")
+        app_js = (AGENT_ROOT / "FRONT" / "assets" / "app.js").read_text("utf-8")
         self.assertNotIn("0.01", app_js)
         self.assertNotIn("0.25", app_js)
         self.assertIn('"/api/', app_js)
@@ -122,7 +123,7 @@ class BillingArchitectureTests(unittest.TestCase):
         self.assertNotIn("workspace", serialized)
 
     def test_nginx_proxy_uses_runtime_backend_variables(self) -> None:
-        nginx = (REPO / "front" / "nginx.conf.template").read_text("utf-8")
+        nginx = (AGENT_ROOT / "FRONT" / "nginx.conf.template").read_text("utf-8")
         self.assertIn("${BACKEND_HOST}:${BACKEND_PORT}", nginx)
         self.assertIn("location /api/", nginx)
         self.assertIn("location = /health", nginx)
@@ -139,12 +140,12 @@ class BillingArchitectureTests(unittest.TestCase):
             def log_message(self, fmt: str, *args: object) -> None:
                 return
 
-        spec = importlib.util.spec_from_file_location("billing_front_dev_server", REPO / "front" / "dev_server.py")
+        spec = importlib.util.spec_from_file_location("billing_front_dev_server", AGENT_ROOT / "FRONT" / "dev_server.py")
         self.assertIsNotNone(spec and spec.loader)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         backend = ThreadingHTTPServer(("127.0.0.1", 0), BackendHandler)
-        front = module.create_server(REPO / "front", "127.0.0.1", 0, "127.0.0.1", backend.server_port)
+        front = module.create_server(AGENT_ROOT / "FRONT", "127.0.0.1", 0, "127.0.0.1", backend.server_port)
         threads = [
             threading.Thread(target=backend.serve_forever, daemon=True),
             threading.Thread(target=front.serve_forever, daemon=True),
@@ -164,12 +165,12 @@ class BillingArchitectureTests(unittest.TestCase):
             backend.server_close()
 
     def test_containers_are_independent_and_non_root(self) -> None:
-        back = (REPO / "back" / "Dockerfile").read_text("utf-8")
-        front = (REPO / "front" / "Dockerfile").read_text("utf-8")
-        compose = (REPO / "compose.yaml").read_text("utf-8")
+        back = (AGENT_ROOT / "BACK" / "Dockerfile").read_text("utf-8")
+        front = (AGENT_ROOT / "FRONT" / "Dockerfile").read_text("utf-8")
+        compose = (AGENT_ROOT / "compose.yaml").read_text("utf-8")
         self.assertIn("USER 1001:1001", back)
         self.assertIn("USER 101", front)
-        self.assertIn("BACKEND_HOST: back", compose)
+        self.assertIn("BACKEND_HOST: billing-back", compose)
         self.assertEqual(compose.count("ports:"), 1)
 
 

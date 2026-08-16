@@ -14,17 +14,17 @@ from urllib.request import Request, urlopen
 
 from fastapi.testclient import TestClient
 
-from sonia.agents.billing.contracts import AgentResponse
-from sonia.agents.billing.data import load_dataset
-from sonia.agents.billing.agent import validate_arguments
-from sonia.agents.billing.model import money, parse_date
-from sonia.agents.billing.rules import TOLERANCE
-from sonia.agents.billing.service import BillingService
-from sonia.agents.billing.presentation import finding_label, presentation_for, status_label
-from sonia.agents.billing.runtime import AgentResult, BillingAgentRuntime, SessionContext, compact_for_llm, deterministic_route
-from sonia.agents.billing.openai_runtime import API_URL, DEFAULT_MODEL, OpenAIRuntime, extract_output_text
-from sonia.app import create_app
-from sonia.config import Settings
+from billing_agent.contracts import AgentResponse
+from billing_agent.data import load_dataset
+from billing_agent.agent import validate_arguments
+from billing_agent.model import money, parse_date
+from billing_agent.rules import TOLERANCE
+from billing_agent.service import BillingService
+from billing_agent.presentation import finding_label, presentation_for, status_label
+from billing_agent.runtime import AgentResult, BillingAgentRuntime, SessionContext, compact_for_llm, deterministic_route
+from billing_agent.openai_runtime import API_URL, DEFAULT_MODEL, OpenAIRuntime, extract_output_text
+from billing_agent.app import create_app
+from billing_agent.config import Settings
 
 
 def dataset_path() -> Path | None:
@@ -157,7 +157,7 @@ class UnitTests(unittest.TestCase):
         self.assertNotIn("__source_table", json.dumps(calls[1]))
         self.assertNotIn("raw-csv", json.dumps(calls[1]))
         error = HTTPError(API_URL, 404, "Not Found", {}, BytesIO(b"{}"))
-        with patch("sonia.agents.billing.openai_runtime.urlopen", side_effect=error):
+        with patch("billing_agent.openai_runtime.urlopen", side_effect=error):
             with self.assertRaises(RuntimeError):
                 OpenAIRuntime._http_post({}, "test-key")
         with patch.dict(os.environ, {}, clear=True):

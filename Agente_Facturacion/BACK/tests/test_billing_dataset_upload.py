@@ -12,8 +12,8 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from dataset_fixtures import source_bytes, write_sources, zip_sources
-from sonia.app import create_app
-from sonia.config import Settings
+from billing_agent.app import create_app
+from billing_agent.config import Settings
 
 
 class DatasetUploadAcceptanceTests(unittest.TestCase):
@@ -125,7 +125,7 @@ class DatasetUploadAcceptanceTests(unittest.TestCase):
                 received.append(json.dumps(compact, ensure_ascii=False))
                 return "Explicación grounded mock."
 
-        with patch("sonia.app.OpenAIRuntime", return_value=FakeLLM()), patch.dict(os.environ, {"OPENAI_API_KEY": "mock"}):
+        with patch("billing_agent.app.OpenAIRuntime", return_value=FakeLLM()), patch.dict(os.environ, {"OPENAI_API_KEY": "mock"}):
             response = self.client.post("/api/conversation", json={
                 "question": "¿Qué debería revisar hoy?", "dataset_id": uploaded["dataset_id"], "context": {}
             })

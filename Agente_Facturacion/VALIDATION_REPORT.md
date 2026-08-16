@@ -55,8 +55,21 @@
 
 - Docker no está instalado en el entorno de validación; no se declara `docker compose up --build` como ejecutado.
 - Se validaron estáticamente Dockerfiles no-root, Compose con solo FRONT publicado, proxy parametrizado y filesystem read-only con tmpfs.
-- Se inspeccionó el contrato público K3S sin modificarlo: puertos 8080, probe `/health`, usuarios 1001/101, `/tmp` escribible y `BACKEND_HOST=reto-movistar-back`.
+- Se inspeccionó el contrato público K3S sin modificarlo: puertos 8080, probe `/health`, usuarios 1001/101, `/tmp` escribible y proxy interno parametrizado. Los manifests standalone usan `billing-back`.
 
 ## Resultado
 
 AC-01 a AC-11: PASS. Pruebas FAIL: 0. Queda pendiente únicamente ejecutar el build/smoke de Docker en una máquina con Docker disponible.
+
+## Refactor estructural · 2026-08-15
+
+- HEAD inicial preservado: `242051f9f1b2124930c8c6ae4ef7476480fd420e`.
+- Baseline previo al movimiento: 66/66 pruebas OK.
+- Implementación única: `Agente_Facturacion/BACK/src/billing_agent/` y `Agente_Facturacion/FRONT/`.
+- Se eliminaron las rutas productivas legacy `back/`, `front/` y `compose.yaml` de la raíz.
+- Los once módulos de dominio Billing y los activos JS/CSS/config conservan blobs idénticos al baseline; solo cambiaron imports, packaging y rutas de infraestructura.
+- Suite posterior al movimiento: 66/66 pruebas OK; AC-01 a AC-11 PASS.
+- Smoke real: BACK y FRONT independientes en `127.0.0.1:8080` y `127.0.0.1:8503`; cinco vistas, asistente y handoff respondieron por proxy HTTP.
+- Carga real de cinco CSV y carga ZIP: `READY`, 3,364 facturas en ambos casos; DELETE ejecutado para ambas cargas temporales.
+- Se añadieron manifests standalone en `DEPLOY/kubernetes/`, sin modificar `K3S_Infra`.
+- Docker continúa no disponible en esta máquina; sus artefactos se verificaron estáticamente, no se declara build ejecutado.

@@ -10,12 +10,12 @@ from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from .agents.billing.openai_runtime import OpenAIRuntime
-from .agents.billing.presentation import presentation_for
-from .agents.billing.runtime import BillingAgentRuntime, SessionContext
+from .openai_runtime import OpenAIRuntime
+from .presentation import presentation_for
+from .runtime import BillingAgentRuntime, SessionContext
 from .config import Settings
 from .datasets import DatasetRegistry
-from .agents.billing.data import DatasetValidationError
+from .data import DatasetValidationError
 
 LOG = logging.getLogger("sonia.billing")
 

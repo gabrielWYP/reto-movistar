@@ -1,8 +1,8 @@
 services:
-  back:
+  billing-back:
     build:
       context: .
-      dockerfile: back/Dockerfile
+      dockerfile: BACK/Dockerfile
     environment:
       SONIA_DATASET: /data
       SONIA_HOST: 0.0.0.0
@@ -13,21 +13,21 @@ services:
       SONIA_BILLING_MODEL: ${SONIA_BILLING_MODEL:-gpt-5}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
-      - "${SONIA_DATASET:-./data/source/DATASET}:/data:ro"
+      - "${SONIA_DATASET:-../data/source/DATASET}:/data:ro"
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
     restart: unless-stopped
 
-  front:
+  billing-front:
     build:
       context: .
-      dockerfile: front/Dockerfile
+      dockerfile: FRONT/Dockerfile
     depends_on:
-      back:
+      billing-back:
         condition: service_healthy
     environment:
-      BACKEND_HOST: back
+      BACKEND_HOST: billing-back
       BACKEND_PORT: "8080"
     ports:
       - "127.0.0.1:${SONIA_PUBLIC_PORT:-8080}:8080"

@@ -10,8 +10,8 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from .agents.billing.data import DatasetValidationError, TABLE_FILES
-from .agents.billing.service import BillingService
+from .data import DatasetValidationError, TABLE_FILES
+from .service import BillingService
 from .config import Settings
 
 

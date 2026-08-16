@@ -8,7 +8,7 @@ No emite facturas, no calcula tarifa contractual/PxQ, no usa la tabla 004 Pagos,
 
 ```text
 FRONT (proceso/pod independiente)
-  index.html + src/app.js + src/styles.css
+  index.html + assets/app.js + assets/styles.css
   Nginx / proxy relativo /api/*
                  ↓ HTTP
 BACK (proceso/pod independiente)
@@ -17,7 +17,15 @@ BACK (proceso/pod independiente)
   DatasetRegistry → DatasetSource CSV/ZIP → modelo canónico
 ```
 
-Existe una sola implementación Billing productiva: `back/src/sonia/agents/billing/`. El backend no importa HTML ni Nginx; el frontend no lee CSV, no conoce rutas internas, no contiene reglas financieras y no accede a secretos.
+Existe una sola implementación Billing productiva: `Agente_Facturacion/BACK/src/billing_agent/`. El backend no importa HTML ni Nginx; el frontend no lee CSV, no conoce rutas internas, no contiene reglas financieras y no accede a secretos.
+
+```text
+Agente_Facturacion/
+├── BACK/     paquete Python, API, runtime, datasets y tests
+├── FRONT/    cliente estático y contenedor Nginx
+├── DEPLOY/   contrato y manifiestos Kubernetes de referencia
+└── compose.yaml
+```
 
 ## Inicio local
 
@@ -33,14 +41,14 @@ Inicio manual:
 
 ```powershell
 $env:SONIA_DATASET = ".\data\source\DATASET"
-$env:PYTHONPATH = ".\back\src"
-.\.venv\Scripts\python.exe -m uvicorn sonia.app:app --host 127.0.0.1 --port 8080
+$env:PYTHONPATH = ".\Agente_Facturacion\BACK\src"
+.\.venv\Scripts\python.exe -m uvicorn billing_agent.app:app --host 127.0.0.1 --port 8080
 ```
 
 En otra consola:
 
 ```powershell
-.\.venv\Scripts\python.exe .\front\dev_server.py --host 127.0.0.1 --port 8503
+.\.venv\Scripts\python.exe .\Agente_Facturacion\FRONT\dev_server.py --host 127.0.0.1 --port 8503
 ```
 
 ## Frontend
@@ -127,10 +135,10 @@ Identidad temporal: `RAZON_SOCIAL`. Join factura–planta: `RAZON_SOCIAL + COD_C
 
 ```powershell
 $env:SONIA_DATASET = ".\data\source\DATASET"
-docker compose up --build
+docker compose -f .\Agente_Facturacion\compose.yaml up --build
 ```
 
-Compose publica solo FRONT en `127.0.0.1:8080`; Nginx resuelve BACK como `back:8080`. Ambos contenedores son no-root, independientes y de filesystem read-only con `/tmp`/caches temporales.
+Compose publica solo FRONT en `127.0.0.1:8080`; Nginx resuelve BACK como `billing-back:8080`. Ambos contenedores son no-root, independientes y de filesystem read-only con `/tmp`/caches temporales.
 
 La implementación respeta el contrato de `K3S_Infra`: BACK `0.0.0.0:8080`, probe `/health`, usuario 1001, `/tmp` escribible; FRONT puerto 8080, usuario 101 y `BACKEND_HOST=reto-movistar-back`. No se modificó ese repositorio.
 
@@ -138,8 +146,8 @@ La implementación respeta el contrato de `K3S_Infra`: BACK `0.0.0.0:8080`, prob
 
 ```powershell
 $env:SONIA_DATASET = ".\data\source\DATASET"
-$env:PYTHONPATH = ".\back\src"
-.\.venv\Scripts\python.exe -m unittest discover -s .\back\tests -v
+$env:PYTHONPATH = ".\Agente_Facturacion\BACK\src"
+.\.venv\Scripts\python.exe -m unittest discover -s .\Agente_Facturacion\BACK\tests -v
 ```
 
 La suite incluye regresión del core, AC-01…AC-11, API/arquitectura, uploads válidos e inválidos, traversal ZIP, aislamiento, contexto y minimización de datos. Consulta [ACCEPTANCE_MATRIX.md](ACCEPTANCE_MATRIX.md).

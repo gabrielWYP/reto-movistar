@@ -7,13 +7,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dataset_fixtures import source_bytes, write_sources
-from sonia.agents.billing.agent import TOOL_NAMES
-from sonia.agents.billing.openai_runtime import OpenAIRuntime
-from sonia.agents.billing.rules import DATA_QUALITY, DETERMINISTIC, HEURISTIC
-from sonia.agents.billing.runtime import BillingAgentRuntime, SessionContext, deterministic_route
-from sonia.agents.billing.service import BillingService
-from sonia.config import Settings
-from sonia.datasets import DatasetRegistry
+from billing_agent.agent import TOOL_NAMES
+from billing_agent.openai_runtime import OpenAIRuntime
+from billing_agent.rules import DATA_QUALITY, DETERMINISTIC, HEURISTIC
+from billing_agent.runtime import BillingAgentRuntime, SessionContext, deterministic_route
+from billing_agent.service import BillingService
+from billing_agent.config import Settings
+from billing_agent.datasets import DatasetRegistry
 
 
 DATASET = Path(os.environ["SONIA_DATASET"]) if os.environ.get("SONIA_DATASET") else None
