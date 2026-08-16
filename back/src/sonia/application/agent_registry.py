@@ -14,8 +14,14 @@ _AGENTS: tuple[AgentDescriptor, ...] = (
         agent_id="collections",
         display_name="Cobranzas y conciliación",
         source_branch="Arian",
-        package="sonia.agents.collections",
-        capabilities=("portfolio_snapshot", "payment_matching", "collection_priority"),
+        package="collections_agent",
+        capabilities=(
+            "portfolio_snapshot",
+            "customer_snapshot",
+            "invoice_trace",
+            "collection_priority",
+            "reconciliation_exceptions",
+        ),
     ),
     AgentDescriptor(
         agent_id="bi",

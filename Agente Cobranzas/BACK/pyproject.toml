@@ -3,23 +3,18 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sonia-movistar"
-version = "0.1.0"
-description = "SON-IA agentic operations prototype for the Movistar challenge"
+name = "sonia-collections-agent"
+version = "1.0.0"
+description = "Deterministic, evidence-first Collections and Revenue Reconciliation Agent for SON-IA."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "Apache-2.0" }
-authors = [{ name = "SON-IA Team" }]
 dependencies = [
   "fastapi>=0.115,<1.0",
+  "openai>=1.66,<3.0",
   "pydantic>=2.10,<3.0",
   "python-multipart>=0.0.20,<1.0",
   "uvicorn[standard]>=0.34,<1.0",
 ]
-
-[project.scripts]
-sonia = "sonia.__main__:main"
-sonia-billing = "sonia.agents.billing.cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -30,6 +25,10 @@ dev = [
   "ruff>=0.11,<1.0",
 ]
 
+[project.scripts]
+sonia-collections = "collections_agent.cli:main"
+sonia-collections-api = "collections_agent.__main__:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -37,23 +36,21 @@ where = ["src"]
 addopts = "-q --strict-markers --disable-warnings"
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = ["official_dataset: regression against the official hackathon dataset"]
 
 [tool.ruff]
-extend-exclude = ["src/sonia/agents/billing", "tests/agents"]
 line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ANN"]
+ignore = ["E501", "ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["ANN"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = ["src", "../Agente BI/BACK/src", "../Agente Cobranzas/BACK/src"]
-packages = ["sonia"]
-
-[[tool.mypy.overrides]]
-module = [
-  "sonia.agents.billing.*",
-]
-ignore_errors = true
+mypy_path = ["src"]
+packages = ["collections_agent"]

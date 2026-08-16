@@ -1,13 +1,12 @@
 services:
-  back:
+  collections-back:
     build:
       context: .
-      dockerfile: back/Dockerfile
+      dockerfile: BACK/Dockerfile
     environment:
-      SONIA_ENVIRONMENT: local
+      SONIA_HOST: 0.0.0.0
+      SONIA_PORT: "8080"
       SONIA_LOG_LEVEL: INFO
-      SONIA_BI_MODEL: ${SONIA_BI_MODEL:-deepseek-v4-flash}
-      OPENCODE_KEY: ${OPENCODE_KEY:-}
       SONIA_COLLECTIONS_MODEL: ${SONIA_COLLECTIONS_MODEL:-}
       SONIA_COLLECTIONS_REASONING_EFFORT: ${SONIA_COLLECTIONS_REASONING_EFFORT:-}
       SONIA_COLLECTIONS_MAX_TOOL_CALLS: ${SONIA_COLLECTIONS_MAX_TOOL_CALLS:-}
@@ -16,20 +15,20 @@ services:
       SONIA_COLLECTIONS_MAX_UPLOAD_FILES: ${SONIA_COLLECTIONS_MAX_UPLOAD_FILES:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     read_only: true
-    restart: unless-stopped
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
+    restart: unless-stopped
 
-  front:
+  collections-front:
     build:
       context: .
-      dockerfile: front/Dockerfile
-    depends_on:
-      back:
-        condition: service_healthy
+      dockerfile: FRONT/Dockerfile
     environment:
-      BACKEND_HOST: back
+      BACKEND_HOST: collections-back
       BACKEND_PORT: "8080"
+    depends_on:
+      collections-back:
+        condition: service_healthy
     ports:
-      - "${SONIA_PUBLIC_PORT:-8080}:8080"
+      - "${SONIA_COLLECTIONS_PUBLIC_PORT:-8081}:8080"
     restart: unless-stopped

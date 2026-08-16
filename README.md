@@ -32,17 +32,22 @@ La emisión de facturas, la aplicación de pagos y las integraciones corporativa
 
 ```text
 front/
-├── agents/{billing,collections,bi}/
+├── agents/{billing,collections}/   # integración mínima y tarjeta
 ├── assets/
 └── Dockerfile
 back/
-├── src/sonia/agents/{billing,collections}/
+├── src/sonia/agents/billing/
 ├── tests/
 ├── Dockerfile
 └── pyproject.toml
+Agente Cobranzas/
+├── BACK/src/collections_agent/
+├── FRONT/
+└── DEPLOY/
 Agente BI/
 ├── BACK/src/bi_agent/
-└── FRONT/
+├── FRONT/
+└── DEPLOY/
 ```
 
 El Ingress publica solo `front`; Nginx enruta `/api/*` y `/health` al Service
@@ -66,6 +71,11 @@ backend compartido publica sus contratos en `/api/bi/*`. El dataset se carga
 desde esa interfaz o mediante `POST /api/bi/dataset`; permanece en RAM dentro
 del contenedor `back` y se pierde al reiniciar el pod.
 
+El Agente de Cobranzas se abre desde su tarjeta o directamente en
+`http://localhost:8080/agents/collections/index.html`. Su API vive bajo
+`/api/collections/*`; los CSV validados también permanecen en RAM y no se
+mezclan con el dataset anterior cuando una carga es incompatible.
+
 Las consultas BI usan OpenCode Go cuando `OPENCODE_KEY` está disponible en el
 entorno del backend. El modelo predeterminado es `deepseek-v4-flash`: selecciona
 una tool cerrada, Python calcula el resultado y el modelo redacta la respuesta
@@ -78,11 +88,12 @@ en la imagen.
 cd back
 python -m venv .venv
 .venv/bin/pip install -e '../Agente BI/BACK[dev]'
+.venv/bin/pip install -e '../Agente Cobranzas/BACK[dev]'
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/python -m sonia
 ```
 
-Los contratos operativos están disponibles en `GET /health`, `GET /api/agents`
-y `GET /api/bi/status`. Producción publica las dos imágenes compartidas desde
+Los contratos operativos están disponibles en `GET /health`, `GET /api/agents`,
+`GET /api/collections/status` y `GET /api/bi/status`. Producción publica las dos imágenes compartidas desde
 `front/Dockerfile` y `back/Dockerfile`; el `Dockerfile` raíz se conserva
 solo para compatibilidad local.

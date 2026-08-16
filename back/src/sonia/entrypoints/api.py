@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from bi_agent.api import create_bi_router
 from bi_agent.application import BIBackend
+from collections_agent.api import create_collections_router
+from collections_agent.application import CollectionsBackend
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +27,7 @@ logger = logging.getLogger(__name__)
 def create_app(
     settings: Settings | None = None,
     bi_backend: BIBackend | None = None,
+    collections_backend: CollectionsBackend | None = None,
 ) -> FastAPI:
     """Create an application instance with explicit runtime dependencies."""
     runtime_settings = settings or get_settings()
@@ -38,6 +41,8 @@ def create_app(
     )
     runtime_bi_backend = bi_backend or BIBackend()
     application.include_router(create_bi_router(runtime_bi_backend))
+    runtime_collections_backend = collections_backend or CollectionsBackend()
+    application.include_router(create_collections_router(runtime_collections_backend))
 
     @application.middleware("http")
     async def request_observability(
