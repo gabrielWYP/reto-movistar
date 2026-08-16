@@ -80,10 +80,10 @@ def test_collections_dataset_upload_is_validated_and_used() -> None:
         collections_backend=CollectionsBackend(),
     )
     invoices = (
-        "RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|NRO_DOC_FISCAL|"
-        "FECHA_EMISION|FECHA_VTO|CHARGE_TOTAL_AMOUNT\n"
-        "CLIENT_UPLOAD|002|ACC-2|FAC-002|2026-07-01|2026-07-20|75.00\n"
-    ).encode()
+        b"RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|NRO_DOC_FISCAL|"
+        b"FECHA_EMISION|FECHA_VTO|CHARGE_TOTAL_AMOUNT\n"
+        b"CLIENT_UPLOAD|002|ACC-2|FAC-002|2026-07-01|2026-07-20|75.00\n"
+    )
 
     with TestClient(app) as client:
         before = client.get("/api/collections/portfolio")
