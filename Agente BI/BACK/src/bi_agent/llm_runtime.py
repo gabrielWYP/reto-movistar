@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from collections.abc import Callable
 from time import perf_counter
 from typing import Any, cast
@@ -17,6 +18,7 @@ from .prompting import SYSTEM_PROMPT
 API_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 DEFAULT_MODEL = "deepseek-v4-flash"
 REQUEST_TIMEOUT_SECONDS = 60
+CLIENT_USER_AGENT = "sonia-bi/1.0"
 logger = logging.getLogger(__name__)
 
 
@@ -48,18 +50,35 @@ class OpenCodeRuntime:
         request = Request(
             API_URL,
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": CLIENT_USER_AGENT,
+            },
             method="POST",
         )
         try:
             with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                 return cast(dict[str, Any], json.loads(response.read().decode("utf-8")))
         except HTTPError as error:
-            raise RuntimeError(f"OpenCode Go devolvió HTTP {error.code}.") from error
+            detail = OpenCodeRuntime._http_error_detail(error)
+            suffix = f" ({detail})" if detail else ""
+            raise RuntimeError(f"OpenCode Go devolvió HTTP {error.code}{suffix}.") from error
         except (TimeoutError, URLError) as error:
             raise RuntimeError("No se pudo conectar con OpenCode Go.") from error
         except json.JSONDecodeError as error:
             raise RuntimeError("OpenCode Go devolvió JSON inválido.") from error
+
+    @staticmethod
+    def _http_error_detail(error: HTTPError) -> str | None:
+        """Extract a non-sensitive Cloudflare code from an HTTP error body."""
+        try:
+            body = error.read(2048).decode("utf-8", errors="replace")
+        except (AttributeError, OSError, ValueError):
+            return None
+        match = re.search(r"\berror code:\s*(\d{3,5})\b", body, flags=re.IGNORECASE)
+        return f"Cloudflare error {match.group(1)}" if match else None
 
     @staticmethod
     def _usage(response: dict[str, Any]) -> dict[str, int]:
@@ -173,7 +192,7 @@ class OpenCodeRuntime:
                     {"role": "user", "content": "Verifica conectividad."},
                 ],
                 "temperature": 0,
-                "max_tokens": 5,
+                "max_tokens": 64,
             },
             "connection_probe",
         )
