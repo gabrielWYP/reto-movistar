@@ -9,19 +9,33 @@
     <script src="/assets/safe-markdown.js?v=__ASSET_VERSION__" defer></script>
   </head>
   <body>
+    <div class="sonia-product">
+      <aside class="product-rail" aria-label="Navegación principal SON-IA">
+        <a class="rail-brand" href="/" aria-label="Volver al Supervisor SON-IA"><span class="brand-mark" aria-hidden="true">S</span><span><strong>SON-IA</strong><small>Sinergia Operativa del Negocio</small></span></a>
+        <nav class="product-nav" aria-label="Ecosistema de agentes">
+          <span class="rail-section">Centro de control</span>
+          <a href="/"><span aria-hidden="true">✦</span> Supervisor</a>
+          <span class="rail-section">Especialistas</span>
+          <a href="/agents/billing/index.html"><span aria-hidden="true">▣</span> Facturación</a>
+          <a class="active" href="/agents/collections/index.html" aria-current="page"><span aria-hidden="true">$</span> Cobranzas</a>
+          <a href="/bi/"><span aria-hidden="true">▥</span> BI</a>
+        </nav>
+        <div class="rail-status"><span class="live-dot" aria-hidden="true"></span><span><strong>Cobranzas activa</strong><small>Gestión de cartera</small></span></div>
+      </aside>
+      <div class="agent-app">
     <main class="shell">
-      <a class="back-link" href="/">← Volver al centro de operaciones</a>
+      <a class="back-link" href="/">← Supervisor SON-IA</a>
 
       <header class="hero">
-        <div class="eyebrow">SON-IA · INTEGRATEL AGÉNTICA</div>
+        <div class="eyebrow">SON-IA · Especialista de Revenue Operations</div>
         <h1>Cobranzas y Recaudación</h1>
-        <p>Consulta cartera, clientes, facturas, prioridades de gestión y pagos que requieren validación.</p>
+        <p>Identifica dónde concentrar la gestión con cartera, prioridades y evidencia documental.</p>
       </header>
 
       <section class="assistant" aria-labelledby="assistant-title">
         <div class="section-heading">
           <div>
-            <h2 id="assistant-title">Consulta con IA</h2>
+            <h2 id="assistant-title"><span class="assistant-spark" aria-hidden="true">✦</span> Asistente SON-IA</h2>
             <p>La IA interpreta la necesidad y utiliza cálculos determinísticos del agente.</p>
           </div>
           <span id="ai-status" class="status" aria-live="polite">Verificando IA…</span>
@@ -40,7 +54,7 @@
       <section class="upload" aria-labelledby="upload-title">
         <div class="section-heading">
           <div>
-            <h2 id="upload-title">Datos para el análisis</h2>
+            <h2 id="upload-title">Fuente de datos</h2>
             <p>Carga hasta seis CSV en una sola selección. Permanecen únicamente en memoria.</p>
           </div>
           <span id="data-status" class="status">Verificando dataset…</span>
@@ -66,6 +80,8 @@
         <div id="content"></div>
       </section>
     </main>
+      </div>
+    </div>
 
     <script type="module" src="assets/app.js?v=__ASSET_VERSION__"></script>
   </body>

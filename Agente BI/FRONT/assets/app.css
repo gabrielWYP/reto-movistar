@@ -1,11 +1,17 @@
 :root {
   color-scheme: light;
-  --blue: #019be1;
-  --navy: #092f44;
+  --movistar-blue: #019df4;
+  --movistar-pink: #e63780;
+  --movistar-navy: #0b2739;
+  --movistar-blue-soft: #e6f5fd;
+  --movistar-grey-soft: #f6f6f6;
+  --white: #ffffff;
+  --blue: var(--movistar-blue);
+  --navy: var(--movistar-navy);
   --ink: #17313f;
   --muted: #607783;
-  --surface: #ffffff;
-  --background: #f3f7f9;
+  --surface: var(--white);
+  --background: var(--movistar-grey-soft);
   --line: #dbe6eb;
   --green: #087b61;
   --amber: #c67b16;
@@ -108,4 +114,103 @@ pre { max-height: 520px; overflow: auto; padding: 18px; border-radius: 12px; bac
   form { grid-template-columns: 1fr; }
   form button { min-height: 50px; }
   .analysis-meta, .bar-label, .execution-origin { align-items: flex-start; flex-direction: column; }
+}
+
+/* SON-IA Visual MVP: shared product shell and executive hierarchy. */
+.sonia-product { min-height: 100vh; }
+.product-rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 20;
+  width: 224px;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 14px 18px;
+  color: #fff;
+  background: var(--movistar-navy);
+  border-right: 1px solid rgba(255,255,255,.08);
+}
+.rail-brand { display: flex; align-items: center; gap: 11px; padding: 0 8px 22px; color: #fff; text-decoration: none; }
+.rail-brand > span:last-child { min-width: 0; }
+.rail-brand strong, .rail-brand small { display: block; }
+.rail-brand strong { font-size: 18px; letter-spacing: .02em; }
+.rail-brand small { margin-top: 2px; color: #aac5d3; font-size: 9px; line-height: 1.25; }
+.rail-mark { flex: 0 0 34px; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--movistar-blue); color: #fff; font-weight: 850; }
+.ecosystem-nav { display: grid; gap: 5px; scrollbar-width: none; }
+.ecosystem-nav::-webkit-scrollbar { display: none; }
+.ecosystem-nav > p { margin: 17px 10px 5px; color: #7899aa; font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+.ecosystem-nav a { display: grid; grid-template-columns: 24px 1fr; gap: 9px; align-items: center; min-height: 48px; padding: 8px 10px; border-radius: 11px; color: #d7e5ec; text-decoration: none; }
+.ecosystem-nav a:hover, .ecosystem-nav a:focus-visible { background: rgba(255,255,255,.08); outline: none; }
+.ecosystem-nav a.active { color: #fff; background: var(--movistar-blue); box-shadow: 0 7px 18px rgba(1,157,244,.2); }
+.ecosystem-nav a > span:first-child { text-align: center; font-size: 17px; }
+.ecosystem-nav strong, .ecosystem-nav small { display: block; }
+.ecosystem-nav strong { font-size: 13px; }
+.ecosystem-nav small { margin-top: 2px; color: inherit; opacity: .7; font-size: 10px; }
+.rail-status { margin-top: auto; padding: 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; background: rgba(255,255,255,.05); }
+.rail-status > span { float: left; width: 8px; height: 8px; margin: 5px 8px 0 0; border-radius: 50%; background: #2ecf92; box-shadow: 0 0 0 4px rgba(46,207,146,.12); }
+.rail-status strong, .rail-status small { display: block; }
+.rail-status strong { font-size: 11px; }
+.rail-status small { margin-top: 3px; color: #9db9c7; font-size: 10px; }
+.agent-app { min-width: 0; margin-left: 224px; }
+.agent-app .topbar { height: 64px; padding: 0 26px; }
+.agent-app .brand strong { color: var(--movistar-navy); font-size: 14px; }
+.agent-app .brand small { margin-top: 2px; font-size: 11px; }
+.agent-app main { width: min(1160px, calc(100% - 48px)); margin-bottom: 52px; }
+.agent-app .hero { align-items: center; padding: 28px 0 22px; }
+.agent-app .hero h1 { margin: 5px 0 10px; font-size: clamp(32px, 4vw, 48px); line-height: 1.02; }
+.agent-app .hero p { margin: 0; font-size: 15px; }
+.agent-app .trust-card { min-width: 250px; padding: 17px 19px; border-radius: 14px; box-shadow: 0 8px 24px rgba(11,39,57,.12); }
+.agent-app .trust-card span { font-size: 12px; }
+.agent-app .dataset-panel { grid-template-columns: 1fr auto auto; gap: 12px; margin-bottom: 14px; padding: 14px 18px; border-radius: 14px; box-shadow: 0 3px 14px rgba(11,39,57,.04); }
+.agent-app .dataset-panel h2 { margin: 3px 0; font-size: 17px; }
+.agent-app .dataset-panel p:last-child { font-size: 12px; }
+.agent-app .dataset-picker, .agent-app #upload-dataset { padding: 10px 13px; border-radius: 9px; font-size: 12px; }
+.agent-app #upload-dataset { background: var(--movistar-blue); }
+.agent-app .query-panel { padding: 22px; border-radius: 16px; box-shadow: 0 5px 18px rgba(11,39,57,.06); }
+.agent-app .panel-heading h2 { font-size: 24px; }
+.assistant-label { color: var(--movistar-pink) !important; }
+.assistant-label span { margin-right: 3px; }
+.agent-app form { margin-top: 16px; }
+.agent-app textarea { min-height: 66px; border-radius: 11px; }
+.agent-app form button { border-radius: 10px; background: var(--movistar-blue); }
+.agent-app .answer-card { border-left-color: var(--movistar-pink); }
+.agent-app .ai-badge { border-color: #f0b1ce; color: #a91e60; background: #fff0f7; }
+.agent-app .query-panel,
+.agent-app .dataset-panel,
+.agent-app .answer-card,
+.agent-app .visual-card,
+.agent-app .trace,
+.agent-app .empty-state { border-color: #dfe8ed; }
+.agent-app .kpi-card { padding: 17px; border-radius: 14px; box-shadow: 0 2px 10px rgba(11,39,57,.035); }
+.agent-app .kpi-card strong { font-size: 25px; }
+.agent-app .story-card { border-radius: 13px; }
+.agent-app .story-card.alert { border-top-color: #d38b1d; background: #fffbf3; }
+.agent-app .empty-state { margin-top: 16px; padding: 28px; border-radius: 16px; }
+.agent-app button:focus-visible,
+.agent-app a:focus-visible,
+.agent-app input:focus-visible,
+.agent-app textarea:focus-visible { outline: 3px solid rgba(1,157,244,.25); outline-offset: 2px; }
+
+@media (max-width: 980px) {
+  .product-rail { width: 194px; }
+  .agent-app { margin-left: 194px; }
+  .ecosystem-nav small, .rail-brand small { display: none; }
+  .agent-app .hero { align-items: stretch; flex-direction: column; }
+  .agent-app .trust-card { min-width: 0; }
+}
+
+@media (max-width: 820px) {
+  .product-rail { position: relative; inset: auto; width: 100%; min-height: 0; padding: 10px 12px; }
+  .rail-brand { padding: 0 4px 10px; }
+  .rail-brand small, .rail-status, .ecosystem-nav > p, .ecosystem-nav small { display: none; }
+  .ecosystem-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+  .ecosystem-nav a { display: flex; justify-content: center; min-height: 42px; padding: 6px; }
+  .ecosystem-nav a > span:first-child { font-size: 14px; }
+  .ecosystem-nav strong { font-size: 10px; }
+  .agent-app { margin-left: 0; }
+  .agent-app .topbar { height: 56px; padding: 0 16px; }
+  .agent-app main { width: min(100% - 24px, 1160px); }
+  .agent-app .hero { padding: 20px 0 16px; }
+  .agent-app .hero h1 { font-size: 32px; }
+  .agent-app .dataset-panel { grid-template-columns: 1fr; }
 }

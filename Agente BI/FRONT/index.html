@@ -10,20 +10,36 @@
     <script src="assets/app.js?v=__ASSET_VERSION__" defer></script>
   </head>
   <body>
-    <header class="topbar">
-      <a class="brand" href="/" aria-label="Volver al centro de operaciones SON-IA">
-        <span class="brand-mark">S</span>
-        <span><strong>SON-IA</strong><small>Business Intelligence</small></span>
-      </a>
-      <div id="system-status" class="status">Verificando backend…</div>
-    </header>
+    <div class="sonia-product">
+      <aside class="product-rail" aria-label="Ecosistema SON-IA">
+        <a class="rail-brand" href="/" aria-label="Ir al Supervisor SON-IA">
+          <span class="rail-mark" aria-hidden="true">S</span>
+          <span><strong>SON-IA</strong><small>Sinergia Operativa del Negocio</small></span>
+        </a>
+        <nav class="ecosystem-nav" aria-label="Agentes SON-IA">
+          <a href="/"><span aria-hidden="true">✦</span><span><strong>Supervisor</strong><small>Centro de operaciones</small></span></a>
+          <p>Especialistas</p>
+          <a href="/agents/billing/index.html"><span aria-hidden="true">▣</span><span><strong>Facturación</strong><small>Billing Assurance</small></span></a>
+          <a href="/agents/collections/index.html"><span aria-hidden="true">$</span><span><strong>Cobranzas</strong><small>Recaudación</small></span></a>
+          <a class="active" href="/bi/" aria-current="page"><span aria-hidden="true">▥</span><span><strong>BI</strong><small>Revenue Intelligence</small></span></a>
+        </nav>
+        <div class="rail-status"><span aria-hidden="true"></span><strong>BI activo</strong><small>Inteligencia ejecutiva</small></div>
+      </aside>
+
+      <div class="agent-app">
+        <header class="topbar">
+          <a class="brand" href="/" aria-label="Volver al centro de operaciones SON-IA">
+            <span><strong>Revenue Intelligence</strong><small>Agente especialista SON-IA</small></span>
+          </a>
+          <div id="system-status" class="status">Verificando backend…</div>
+        </header>
 
     <main>
       <section class="hero">
         <div>
-          <p class="eyebrow">Inteligencia del ciclo de ingresos</p>
-          <h1>Convierte la operación<br />en decisiones accionables.</h1>
-          <p>Indicadores determinísticos, hallazgos explicables y evidencia auditable.</p>
+          <p class="eyebrow">Executive snapshot · Revenue Intelligence</p>
+          <h1>Decisiones ejecutivas<br />con evidencia.</h1>
+          <p>Concentración, riesgos, oportunidades y acciones sobre indicadores determinísticos.</p>
         </div>
         <div class="trust-card">
           <strong>Cálculos verificables</strong>
@@ -33,8 +49,8 @@
 
       <section class="dataset-panel" aria-labelledby="dataset-title">
         <div>
-          <p class="eyebrow">Dataset efímero</p>
-          <h2 id="dataset-title">Carga los seis CSV o un ZIP</h2>
+          <p class="eyebrow">Estado del sistema</p>
+          <h2 id="dataset-title">Fuente de datos</h2>
           <p id="dataset-summary">Los archivos se conservan solo en la memoria del backend.</p>
         </div>
         <label class="dataset-picker">
@@ -51,7 +67,7 @@
 
       <section class="query-panel" aria-labelledby="query-title">
         <div class="panel-heading">
-          <div><p class="eyebrow">Consulta ejecutiva</p><h2 id="query-title">¿Qué quieres analizar?</h2></div>
+          <div><p class="eyebrow assistant-label"><span aria-hidden="true">✦</span> Asistente SON-IA</p><h2 id="query-title">¿Qué quieres analizar?</h2></div>
           <label>Fecha de corte<input id="as-of-date" type="date" value="2026-07-31" /></label>
         </div>
         <form id="query-form">
@@ -104,5 +120,7 @@
       </section>
     </main>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      </div>
+    </div>
   </body>
 </html>
