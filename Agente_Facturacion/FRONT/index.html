@@ -11,6 +11,20 @@
   <script src="assets/app.js?v=__ASSET_VERSION__" defer></script>
 </head>
 <body>
+  <div class="sonia-product">
+    <aside class="product-rail" aria-label="Navegación principal SON-IA">
+      <a class="rail-brand" href="/" aria-label="Volver al Supervisor SON-IA"><span class="brand-mark" aria-hidden="true">S</span><span><strong>SON-IA</strong><small>Sinergia Operativa del Negocio</small></span></a>
+      <nav class="product-nav" aria-label="Ecosistema de agentes">
+        <span class="rail-section">Centro de control</span>
+        <a href="/"><span aria-hidden="true">✦</span> Supervisor</a>
+        <span class="rail-section">Especialistas</span>
+        <a class="active" href="/agents/billing/index.html" aria-current="page"><span aria-hidden="true">▣</span> Facturación</a>
+        <a href="/agents/collections/index.html"><span aria-hidden="true">$</span> Cobranzas</a>
+        <a href="/bi/"><span aria-hidden="true">▥</span> BI</a>
+      </nav>
+      <div class="rail-status"><span class="live-dot" aria-hidden="true"></span><span><strong>Facturación activa</strong><small>Assurance documental</small></span></div>
+    </aside>
+    <div class="agent-app">
   <header class="topbar">
     <a class="brand" href="#" aria-label="SON-IA Facturación"><span class="brand-mark">S</span><span><strong>SON-IA</strong><small>Billing Assurance</small></span></a>
     <div class="runtime"><span class="live-dot"></span><span id="mode">Modo local determinístico</span><span class="divider"></span><span id="cutoff">Corte —</span></div>
@@ -30,7 +44,7 @@
         <button id="delete-dataset" class="button danger hidden" type="button">Eliminar carga</button>
       </div>
       <div id="source-counts" class="source-counts"></div>
-      <p id="upload-help" class="micro">Carga los cinco CSV oficiales de Facturación o un ZIP. Los archivos son temporales y aislados mediante dataset_id.</p>
+      <p id="upload-help" class="micro">Carga las 5 fuentes de Facturación o un ZIP compatible: Clientes, Planta fija, Planta móvil, Facturas y Notas de crédito. No se requiere Pagos. Los archivos son temporales y aislados mediante dataset_id.</p>
     </section>
 
     <nav class="nav" aria-label="Módulos de Facturación">
@@ -50,5 +64,7 @@
     </section>
   </main>
   <footer>SON-IA · Desafío 3 <span>Evidence-first · Human-in-the-loop · AgentResponse v1.0</span></footer>
+    </div>
+  </div>
 </body>
 </html>

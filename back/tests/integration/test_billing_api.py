@@ -52,6 +52,10 @@ def test_shared_backend_mounts_billing_and_accepts_all_sources() -> None:
     with TestClient(create_app(_settings())) as client:
         initial = client.get("/api/billing/status")
         uploaded = client.post("/api/billing/datasets", files=_billing_files())
+        snapshot = client.get(
+            "/api/billing/health",
+            params={"dataset_id": uploaded.json()["dataset_id"]},
+        )
 
     assert initial.status_code == 200
     assert initial.json()["status"] == "dataset_not_configured"
@@ -63,3 +67,5 @@ def test_shared_backend_mounts_billing_and_accepts_all_sources() -> None:
         "invoices": 1,
         "credit_notes": 1,
     }
+    assert snapshot.status_code == 200
+    assert snapshot.json()["agent_response"]["operation"] == "billing_health_snapshot"

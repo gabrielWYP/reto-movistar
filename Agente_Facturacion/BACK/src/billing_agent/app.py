@@ -66,7 +66,9 @@ def create_app(settings: Settings | None = None, *, api_prefix: str = "/api") ->
     async def input_error(_: Request, error: ValueError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"error": "Entrada inválida", "detail": str(error)})
 
-    @application.get("/health", tags=["operations"])
+    infrastructure_health_path = "/health" if normalized_prefix else "/infrastructure-health"
+
+    @application.get(infrastructure_health_path, tags=["operations"])
     async def infrastructure_health() -> dict[str, str]:
         return {"status": "ok", "service": "sonia-billing-back", "version": "1.0.0"}
 
