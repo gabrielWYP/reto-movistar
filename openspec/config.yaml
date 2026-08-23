@@ -1,0 +1,79 @@
+schema: spec-driven
+strict_tdd: true
+
+context: |
+  Tech stack: Python 3.12, FastAPI, Pydantic 2, vanilla JavaScript, Nginx, Docker Compose, K3S.
+  Architecture: modular monolith deployed as shared front and back containers; three specialist agents share one API boundary.
+  Data contract: Supervisor atomically publishes six CSV sources in memory to Billing, Collections, and BI.
+  AI runtime: BI and Collections use OpenCode with deepseek-v4-flash when OPENCODE_KEY is configured.
+  Delivery: GitHub Actions builds multi-architecture images, publishes immutable GHCR tags, and deploys through reusable K3S infrastructure.
+  Style: typed Python, strict Mypy where configured, Ruff lint/format, structured logging, deterministic evidence-first calculations.
+
+testing:
+  strict_tdd: true
+  detected: "2026-08-23"
+  runner:
+    framework: pytest
+    command: "cd back && python -m pytest"
+  layers:
+    unit:
+      available: true
+      tool: pytest
+    integration:
+      available: true
+      tool: pytest with FastAPI TestClient and httpx
+    e2e:
+      available: true
+      tool: Docker Compose and curl smoke tests in GitHub Actions
+  coverage:
+    available: true
+    command: "cd back && python -m pytest --cov=sonia --cov-report=term-missing"
+    threshold: 0
+    enforced_in_ci: false
+  quality:
+    linter:
+      available: true
+      command: "cd back && python -m ruff check src tests"
+    type_checker:
+      available: true
+      command: "cd back && python -m mypy src"
+    formatter:
+      available: true
+      command: "cd back && python -m ruff format --check src tests"
+  package_suites:
+    shared: "cd back && python -m pytest"
+    bi: "cd 'Agente BI/BACK' && python -m pytest"
+    collections: "cd 'Agente Cobranzas/BACK' && python -m pytest"
+    billing: "cd Agente_Facturacion/BACK && python -m pytest"
+
+rules:
+  proposal:
+    - State business outcome, non-goals, risks, and rollback plan.
+    - Preserve the shared two-container deployment contract unless explicitly superseded.
+  specs:
+    - Use RFC 2119 keywords for normative requirements.
+    - Express acceptance scenarios with Given, When, and Then.
+    - Separate autonomous decisions from actions that require human approval.
+    - Define auditability, evidence lineage, failure, retry, and idempotency behavior.
+  design:
+    - Include sequence diagrams for multi-agent or asynchronous flows.
+    - Record architecture decisions and rejected alternatives with rationale.
+    - Define state ownership, persistence boundaries, observability, and security controls.
+  tasks:
+    - Group work into independently verifiable phases with hierarchical numbering.
+    - Keep tests and documentation in the same work unit as the behavior they verify.
+    - Forecast the 400 changed-line review budget before apply.
+  apply:
+    guidelines:
+      - Follow existing modular boundaries and typed Python conventions.
+      - Add structured logging for production orchestration paths.
+      - Keep deterministic calculations outside language-model prompts.
+    tdd: true
+    test_command: "cd back && python -m pytest"
+  verify:
+    test_command: "cd back && python -m pytest"
+    build_command: "docker compose config --quiet"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive or backward-incompatible deltas.
+    - Preserve archived changes as an immutable audit trail.
