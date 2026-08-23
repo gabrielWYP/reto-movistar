@@ -53,10 +53,10 @@ def main() -> None:
         payload = service.reconciliation_exceptions(args.limit, args.as_of_date)
     else:
         from .agent import ask
-        from .llm_runtime import OpenAIRuntime
+        from .llm_runtime import OpenCodeRuntime
 
         settings = CollectionsSettings.from_environment()
-        payload = ask(service, args.question, args.as_of_date, OpenAIRuntime(settings))
+        payload = ask(service, args.question, args.as_of_date, OpenCodeRuntime(settings))
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 

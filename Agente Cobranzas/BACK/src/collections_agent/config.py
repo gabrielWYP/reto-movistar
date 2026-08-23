@@ -20,11 +20,6 @@ def _text(name: str, default: str) -> str:
     return os.getenv(name, "").strip() or default
 
 
-def _choice(name: str, default: str, allowed: set[str]) -> str:
-    value = _text(name, default).lower()
-    return value if value in allowed else default
-
-
 @dataclass(frozen=True, slots=True)
 class CollectionsSettings:
     """Immutable runtime configuration for standalone and integrated modes."""
@@ -33,7 +28,6 @@ class CollectionsSettings:
     port: int
     log_level: str
     model: str
-    reasoning_effort: str
     max_tool_calls: int
     max_output_tokens: int
     max_upload_bytes: int
@@ -47,12 +41,7 @@ class CollectionsSettings:
             host=_text("SONIA_HOST", "0.0.0.0"),
             port=_positive_int("SONIA_PORT", 8080, 65535),
             log_level=_text("SONIA_LOG_LEVEL", "INFO").upper(),
-            model=_text("SONIA_COLLECTIONS_MODEL", "gpt-5.6-terra"),
-            reasoning_effort=_choice(
-                "SONIA_COLLECTIONS_REASONING_EFFORT",
-                "low",
-                {"low", "medium", "high", "xhigh"},
-            ),
+            model=_text("SONIA_COLLECTIONS_MODEL", "deepseek-v4-flash"),
             max_tool_calls=_positive_int("SONIA_COLLECTIONS_MAX_TOOL_CALLS", 3, 5),
             max_output_tokens=_positive_int("SONIA_COLLECTIONS_MAX_OUTPUT_TOKENS", 700, 1600),
             max_upload_bytes=_positive_int(

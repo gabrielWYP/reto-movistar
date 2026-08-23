@@ -8,11 +8,12 @@ FRONTEND = AGENT_ROOT / "FRONT"
 REPOSITORY = AGENT_ROOT.parent
 
 
-def test_collections_uses_openai_secret_without_hardcoding_credentials() -> None:
+def test_collections_uses_opencode_secret_without_hardcoding_credentials() -> None:
     source = "\n".join(path.read_text(encoding="utf-8") for path in BACKEND.glob("*.py"))
-    assert "OPENAI_API_KEY" in source
-    assert "OPENCODE_KEY" not in source
-    assert "from openai import OpenAI" in source
+    assert "OPENCODE_KEY" in source
+    assert "OPENAI_API_KEY" not in source
+    assert "from openai import OpenAI" not in source
+    assert "https://opencode.ai/zen/go/v1/chat/completions" in source
     assert "sk-" not in source
 
 
@@ -30,7 +31,8 @@ def test_collections_keeps_independent_two_service_topology() -> None:
     compose = (AGENT_ROOT / "compose.yaml").read_text(encoding="utf-8")
     assert "collections-back:" in compose
     assert "collections-front:" in compose
-    assert "OPENAI_API_KEY" in compose
+    assert "OPENCODE_KEY" in compose
+    assert "OPENAI_API_KEY" not in compose
 
 
 def test_shared_main_keeps_only_minimal_collections_adapters() -> None:

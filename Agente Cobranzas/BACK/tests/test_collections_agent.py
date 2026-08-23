@@ -1,13 +1,11 @@
 import os
-import sys
-import types
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from collections_agent.agent import TOOL_NAMES, ask, tool_schemas, validate_arguments
 from collections_agent.application import CollectionsBackend
-from collections_agent.llm_runtime import OpenAIRuntime
+from collections_agent.llm_runtime import OpenCodeRuntime
 from collections_agent.service import CollectionsService
 from collections_agent.uploads import load_uploaded_csvs
 from collections_agent.web_app import route_payload
@@ -48,49 +46,49 @@ class CollectionsContractTests(unittest.TestCase):
             raise AssertionError("No se pudo construir el dataset de prueba.")
         return CollectionsService.from_dataset(dataset)
 
-    def test_openai_runtime_exposes_only_closed_deterministic_tools(self):
+    def test_opencode_runtime_exposes_only_closed_deterministic_tools(self):
         schemas = tool_schemas()
         self.assertEqual(len(schemas), 5)
         self.assertEqual({schema["name"] for schema in schemas}, TOOL_NAMES)
         self.assertTrue(all(schema["strict"] for schema in schemas))
 
-    def test_runtime_uses_official_sdk_and_environment_secret(self):
-        observed: dict[str, object] = {}
-
-        class FakeResponse:
-            output_text = "OK"
-
-            @staticmethod
-            def model_dump(*, mode: str) -> dict[str, object]:
-                observed["dump_mode"] = mode
-                return {"output": [{"type": "message", "content": []}]}
-
-        class FakeResponses:
-            @staticmethod
-            def create(**payload: object) -> FakeResponse:
-                observed["payload"] = payload
-                return FakeResponse()
-
-        class FakeOpenAI:
-            def __init__(self, **options: object) -> None:
-                observed["options"] = options
-                self.responses = FakeResponses()
-
-        fake_module = types.SimpleNamespace(OpenAI=FakeOpenAI)
-        runtime = OpenAIRuntime()
-        with (
-            patch.dict(os.environ, {"OPENAI_API_KEY": "test-only"}, clear=True),
-            patch.dict(sys.modules, {"openai": fake_module}),
-        ):
+    def test_runtime_uses_opencode_chat_completions_and_environment_secret(self):
+        post = Mock(
+            return_value={
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "portfolio_snapshot",
+                                        "arguments": "{}",
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            }
+        )
+        runtime = OpenCodeRuntime(post=post)
+        with patch.dict(os.environ, {"OPENCODE_KEY": "test-only"}, clear=True):
             response = runtime.create(
                 [{"role": "user", "content": "Resume la cartera"}],
                 require_tool=True,
                 stage="test",
             )
 
-        self.assertEqual(observed["options"]["api_key"], "test-only")
-        self.assertEqual(observed["payload"]["tool_choice"], "required")
-        self.assertEqual(response["output_text"], "OK")
+        payload, api_key = post.call_args.args
+        self.assertEqual(api_key, "test-only")
+        self.assertEqual(payload["model"], "deepseek-v4-flash")
+        self.assertEqual(payload["tool_choice"], "auto")
+        self.assertEqual(payload["messages"][0]["role"], "system")
+        self.assertEqual(payload["tools"][0]["type"], "function")
+        self.assertEqual(runtime.function_calls(response)[0]["name"], "portfolio_snapshot")
 
     def test_validated_csv_builds_service_and_challenge_kpis(self):
         service = self.service_from_csv()
@@ -127,34 +125,61 @@ class CollectionsContractTests(unittest.TestCase):
         self.assertEqual(july["metrics"]["outstanding_balance"], 60.0)
         self.assertEqual(august["metrics"]["outstanding_balance"], 0.0)
 
-    def test_openai_selects_tools_and_explains_compact_evidence(self):
+    def test_opencode_selects_tools_and_explains_compact_evidence(self):
         responses = [
             {
-                "output": [
+                "choices": [
                     {
-                        "type": "function_call",
-                        "call_id": "call-1",
-                        "name": "customer_snapshot",
-                        "arguments": '{"customer_id":"CLIENT_TEST"}',
-                    },
-                    {
-                        "type": "function_call",
-                        "call_id": "call-2",
-                        "name": "collection_priorities",
-                        "arguments": '{"limit":5}',
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "customer_snapshot",
+                                        "arguments": '{"customer_id":"CLIENT_TEST"}',
+                                    },
+                                },
+                                {
+                                    "id": "call-2",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "collection_priorities",
+                                        "arguments": '{"limit":5}',
+                                    },
+                                },
+                            ],
+                        }
                     },
                 ],
-                "usage": {"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 20,
+                    "total_tokens": 120,
+                },
             },
             {
-                "output": [{"type": "message", "content": []}],
-                "output_text": "El cliente mantiene saldo vencido y debe priorizarse con evidencia.",
-                "usage": {"input_tokens": 80, "output_tokens": 18, "total_tokens": 98},
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": (
+                                "El cliente mantiene saldo vencido y debe priorizarse con evidencia."
+                            ),
+                        }
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 80,
+                    "completion_tokens": 18,
+                    "total_tokens": 98,
+                },
             },
         ]
-        create_response = Mock(side_effect=responses)
-        runtime = OpenAIRuntime(create_response=create_response)
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-only"}, clear=True):
+        post = Mock(side_effect=responses)
+        runtime = OpenCodeRuntime(post=post)
+        with patch.dict(os.environ, {"OPENCODE_KEY": "test-only"}, clear=True):
             result = ask(
                 self.service_from_csv(),
                 "Analiza CLIENT_TEST y dime si debería priorizarlo.",
@@ -166,32 +191,47 @@ class CollectionsContractTests(unittest.TestCase):
         self.assertEqual(result["agent_response"]["operation"], "multi_tool_analysis")
         self.assertEqual(result["mode"], "llm")
         self.assertEqual(result["usage"]["total_tokens"], 218)
-        self.assertEqual(create_response.call_args_list[0].args[0]["tool_choice"], "required")
-        self.assertEqual(create_response.call_args_list[1].args[0]["tool_choice"], "auto")
-        self.assertNotIn("test-only", str(create_response.call_args_list))
+        self.assertEqual(post.call_args_list[0].args[0]["tool_choice"], "auto")
+        self.assertEqual(post.call_args_list[1].args[0]["tool_choice"], "auto")
+        follow_up = post.call_args_list[1].args[0]["messages"]
+        self.assertEqual(
+            [message["role"] for message in follow_up[-3:]], ["assistant", "tool", "tool"]
+        )
+        self.assertNotIn("test-only", str([call.args[0] for call in post.call_args_list]))
 
-    def test_natural_language_requires_openai_instead_of_keyword_routing(self):
-        runtime = OpenAIRuntime(create_response=Mock())
+    def test_natural_language_requires_opencode_instead_of_keyword_routing(self):
+        runtime = OpenCodeRuntime(post=Mock())
         with (
-            patch.dict(os.environ, {"OPENAI_API_KEY": ""}, clear=True),
-            self.assertRaisesRegex(RuntimeError, "OPENAI_API_KEY"),
+            patch.dict(os.environ, {"OPENCODE_KEY": ""}, clear=True),
+            self.assertRaisesRegex(RuntimeError, "OPENCODE_KEY"),
         ):
             ask(self.service_from_csv(), "Resume la cartera", "2026-08-07", runtime)
 
-    def test_openai_response_without_tool_is_rejected(self):
-        runtime = OpenAIRuntime(
-            create_response=Mock(
-                return_value={
-                    "output": [{"type": "message", "content": []}],
-                    "output_text": "Respuesta sin evidencia",
-                }
-            )
+    def test_opencode_response_without_tool_is_rejected(self):
+        post = Mock(
+            return_value={
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "Respuesta sin evidencia",
+                        }
+                    }
+                ]
+            }
         )
+        runtime = OpenCodeRuntime(post=post)
         with (
-            patch.dict(os.environ, {"OPENAI_API_KEY": "test-only"}, clear=True),
+            patch.dict(os.environ, {"OPENCODE_KEY": "test-only"}, clear=True),
             self.assertRaisesRegex(RuntimeError, "no seleccionó"),
         ):
             ask(self.service_from_csv(), "Resume la cartera", "2026-08-07", runtime)
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual(
+            [call.args[0]["max_tokens"] for call in post.call_args_list],
+            [700, 1400],
+        )
+        self.assertIn("REINTENTO", post.call_args_list[1].args[0]["messages"][-1]["content"])
 
     def test_argument_validation_rejects_unknown_fields_and_overrides_cutoff(self):
         with self.assertRaisesRegex(ValueError, "parámetros no autorizados"):

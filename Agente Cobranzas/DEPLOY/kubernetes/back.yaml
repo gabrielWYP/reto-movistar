@@ -22,11 +22,11 @@ spec:
             - configMapRef:
                 name: collections-agent-config
           env:
-            - name: OPENAI_API_KEY
+            - name: OPENCODE_KEY
               valueFrom:
                 secretKeyRef:
-                  name: collections-agent-openai
-                  key: OPENAI_API_KEY
+                  name: collections-agent-opencode
+                  key: OPENCODE_KEY
                   optional: true
           ports:
             - containerPort: 8080

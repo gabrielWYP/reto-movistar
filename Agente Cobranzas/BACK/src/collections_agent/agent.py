@@ -258,14 +258,14 @@ def ask(
     as_of_date: str | None = None,
     runtime: Any | None = None,
 ) -> dict[str, Any]:
-    """Let OpenAI select one or more tools, then explain their computed results."""
+    """Let OpenCode select tools, then explain their deterministic results."""
     if not isinstance(question, str) or not question.strip() or len(question) > 1000:
         raise ValueError("La pregunta debe ser texto no vacío de hasta 1000 caracteres.")
     if as_of_date is not None:
         date.fromisoformat(as_of_date)
     if runtime is None or not runtime.available:
         raise RuntimeError(
-            "La consulta en lenguaje natural requiere OPENAI_API_KEY. "
+            "La consulta en lenguaje natural requiere OPENCODE_KEY. "
             "Las cinco vistas determinísticas continúan disponibles sin IA."
         )
 
@@ -282,7 +282,7 @@ def ask(
     response = runtime.create(conversation, require_tool=True, stage="tool_selection")
     responses.append(response)
     if not runtime.function_calls(response):
-        raise RuntimeError("OpenAI no seleccionó una herramienta de Cobranzas autorizada.")
+        raise RuntimeError("OpenCode Go no seleccionó una herramienta de Cobranzas autorizada.")
 
     while calls := runtime.function_calls(response):
         if calls_used + len(calls) > runtime.max_tool_calls:
@@ -312,12 +312,12 @@ def ask(
                     }
                 )
             if not isinstance(call_id, str):
-                raise RuntimeError("OpenAI devolvió una llamada sin identificador.")
+                raise RuntimeError("OpenCode Go devolvió una llamada sin identificador.")
             outputs.append(
                 {
-                    "type": "function_call_output",
-                    "call_id": call_id,
-                    "output": json.dumps(output_payload, ensure_ascii=False),
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": json.dumps(output_payload, ensure_ascii=False),
                 }
             )
 
@@ -332,7 +332,7 @@ def ask(
 
     answer = runtime.output_text(response)
     if not answer:
-        raise RuntimeError("OpenAI no devolvió una explicación final sustentada.")
+        raise RuntimeError("OpenCode Go no devolvió una explicación final sustentada.")
     return AgentResult(
         answer=answer,
         tool_results=tool_results,

@@ -8,8 +8,8 @@ Antes de aplicar los manifiestos, publica las imágenes y reemplaza
 `replace-with-tag`. Crea el secret sin versionar su valor:
 
 ```bash
-kubectl create secret generic collections-agent-openai \
-  --from-literal=OPENAI_API_KEY='valor-administrado-fuera-de-git'
+kubectl create secret generic collections-agent-opencode \
+  --from-literal=OPENCODE_KEY='valor-administrado-fuera-de-git'
 kubectl apply -k "Agente Cobranzas/DEPLOY/kubernetes"
 ```
 
