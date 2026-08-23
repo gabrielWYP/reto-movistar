@@ -28,7 +28,11 @@ class CollectionsQueryRequest(BaseModel):
     as_of_date: date | None = None
 
 
-def create_collections_router(backend: CollectionsBackend) -> APIRouter:
+def create_collections_router(
+    backend: CollectionsBackend,
+    *,
+    allow_manual_upload: bool = True,
+) -> APIRouter:
     """Create routes mounted by the single shared FastAPI application."""
     router = APIRouter(prefix="/api/collections", tags=["collections"])
 
@@ -92,6 +96,11 @@ def create_collections_router(backend: CollectionsBackend) -> APIRouter:
     async def upload_dataset(
         files: Annotated[list[UploadFile], File(...)],
     ) -> dict[str, object]:
+        if not allow_manual_upload:
+            raise HTTPException(
+                status_code=403,
+                detail="La carga manual está centralizada en Supervisor SON-IA.",
+            )
         settings = backend.settings
         if not files:
             raise HTTPException(status_code=422, detail="Selecciona al menos un CSV.")

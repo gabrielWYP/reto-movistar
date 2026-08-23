@@ -139,30 +139,6 @@ async function queryAgent(question) {
   }
 }
 
-async function uploadDataset(files) {
-  if (!files.length) {
-    showToast("Selecciona al menos un CSV o ZIP.");
-    return;
-  }
-  const button = byId("upload-dataset");
-  const form = new FormData();
-  Array.from(files).forEach((file) => form.append("files", file));
-  button.disabled = true;
-  button.textContent = "Cargando…";
-  try {
-    const response = await fetch("/api/bi/dataset", { method: "POST", body: form });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || `Error HTTP ${response.status}`);
-    showToast(payload.dataset_configured ? "Dataset listo en memoria." : "Carga parcial guardada.");
-    await loadStatus();
-  } catch (error) {
-    showToast(error.message || "No se pudo cargar el dataset.");
-  } finally {
-    button.disabled = false;
-    button.textContent = "Cargar dataset";
-  }
-}
-
 async function loadStatus() {
   try {
     const response = await fetch("/api/bi/status");
@@ -174,8 +150,8 @@ async function loadStatus() {
     byId("system-status").textContent = `${label} · ${aiStatus}`;
     byId("system-status").classList.toggle("ready", status.dataset_configured);
     byId("dataset-summary").textContent = status.dataset_configured
-      ? `${status.dataset_file_count} archivos · ${status.dataset_bytes} bytes en memoria · se perderán al reiniciar.`
-      : `${status.dataset_file_count} archivos cargados · faltan ${status.missing_files.length}.`;
+      ? `${status.dataset_file_count} fuentes publicadas por Supervisor · ${status.dataset_bytes} bytes en memoria.`
+      : "Supervisor todavía no ha publicado una fuente de datos.";
   } catch {
     byId("system-status").textContent = "Backend no disponible";
   }
@@ -195,10 +171,6 @@ byId("suggestions").addEventListener("click", (event) => {
 byId("query-form").addEventListener("submit", (event) => {
   event.preventDefault();
   queryAgent(byId("question").value.trim());
-});
-
-byId("upload-dataset").addEventListener("click", () => {
-  uploadDataset(byId("dataset-files").files);
 });
 
 loadStatus();

@@ -84,6 +84,21 @@ class BIBackend:
             self._service = service
             return self.dataset_status()
 
+    def publish_dataset(
+        self,
+        service: BIService,
+        files: dict[str, bytes],
+        *,
+        source: str,
+    ) -> dict[str, Any]:
+        """Publish a dataset already validated by the shared Supervisor."""
+        with self._service_lock:
+            self._service = service
+            self._dataset_files = dict(files)
+            self._dataset_bytes = sum(len(content) for content in files.values())
+            self._dataset_source = source
+            return self.dataset_status()
+
     def service(self) -> BIService:
         """Lazily build the deterministic service once for the backend process."""
         if self._service is None:

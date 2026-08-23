@@ -38,13 +38,10 @@ main { width: min(1180px, calc(100% - 40px)); margin: 0 auto 80px; }
 .trust-card strong, .trust-card span { display: block; }
 .trust-card span { margin-top: 8px; color: #b9d5e2; }
 .query-panel, .dataset-panel, .answer-card, .visual-card, .trace, .empty-state { background: var(--surface); border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 10px 32px rgba(20, 58, 75, .06); }
-.dataset-panel { display: grid; grid-template-columns: 1fr auto auto; gap: 18px; align-items: center; margin-bottom: 18px; padding: 22px 28px; }
+.dataset-panel { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; margin-bottom: 18px; padding: 22px 28px; }
 .dataset-panel h2 { margin: 5px 0; }
 .dataset-panel p:last-child { margin: 0; color: var(--muted); }
-.dataset-picker { display: inline-grid; place-items: center; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: #f8fbfc; color: var(--navy); font-weight: 800; cursor: pointer; }
-.dataset-picker input { width: 1px; height: 1px; overflow: hidden; opacity: 0; position: absolute; }
-#upload-dataset { padding: 13px 18px; border: 0; border-radius: 12px; background: var(--navy); color: white; font-weight: 800; cursor: pointer; }
-#upload-dataset:disabled { opacity: .55; cursor: wait; }
+.dataset-picker { display: inline-grid; place-items: center; padding: 12px 16px; border: 1px solid var(--line); border-radius: 12px; background: #f8fbfc; color: var(--navy); font-weight: 800; text-decoration: none; }
 .query-panel { padding: 28px; }
 .panel-heading, .section-heading, .analysis-meta { display: flex; justify-content: space-between; gap: 24px; align-items: end; }
 h2, h3 { color: var(--navy); }
@@ -161,11 +158,10 @@ pre { max-height: 520px; overflow: auto; padding: 18px; border-radius: 12px; bac
 .agent-app .hero p { margin: 0; font-size: 15px; }
 .agent-app .trust-card { min-width: 250px; padding: 17px 19px; border-radius: 14px; box-shadow: 0 8px 24px rgba(11,39,57,.12); }
 .agent-app .trust-card span { font-size: 12px; }
-.agent-app .dataset-panel { grid-template-columns: 1fr auto auto; gap: 12px; margin-bottom: 14px; padding: 14px 18px; border-radius: 14px; box-shadow: 0 3px 14px rgba(11,39,57,.04); }
+.agent-app .dataset-panel { grid-template-columns: 1fr auto; gap: 12px; margin-bottom: 14px; padding: 14px 18px; border-radius: 14px; box-shadow: 0 3px 14px rgba(11,39,57,.04); }
 .agent-app .dataset-panel h2 { margin: 3px 0; font-size: 17px; }
 .agent-app .dataset-panel p:last-child { font-size: 12px; }
-.agent-app .dataset-picker, .agent-app #upload-dataset { padding: 10px 13px; border-radius: 9px; font-size: 12px; }
-.agent-app #upload-dataset { background: var(--movistar-blue); }
+.agent-app .dataset-picker { padding: 10px 13px; border-radius: 9px; font-size: 12px; }
 .agent-app .query-panel { padding: 22px; border-radius: 16px; box-shadow: 0 5px 18px rgba(11,39,57,.06); }
 .agent-app .panel-heading h2 { font-size: 24px; }
 .assistant-label { color: var(--movistar-pink) !important; }

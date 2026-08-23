@@ -273,12 +273,117 @@ h1 em {
 }
 
 .journey-panel,
+.dataset-hub,
 .case-card,
 .supervisor-card,
 .agent-card,
 .metric-grid article {
   border: 1px solid var(--line);
   background: var(--white);
+}
+
+.dataset-hub {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.7fr);
+  gap: 32px;
+  margin-bottom: 24px;
+  padding: 28px 32px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.dataset-hub h2 {
+  margin-bottom: 10px;
+  font-size: clamp(24px, 2.4vw, 34px);
+  letter-spacing: -0.045em;
+}
+
+.dataset-hub-copy > p:not(.eyebrow) {
+  max-width: 700px;
+  margin-bottom: 18px;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.dataset-agent-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dataset-agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #eff2f2;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.dataset-agent-chip.ready {
+  background: var(--green-pale);
+  color: var(--green);
+}
+
+.dataset-hub-actions {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.dataset-hub-actions .pill {
+  width: fit-content;
+}
+
+.pill.dataset-ready {
+  background: var(--green-pale);
+  color: var(--green);
+}
+
+.dataset-file-picker,
+.dataset-publish {
+  display: grid;
+  min-height: 46px;
+  place-items: center;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.dataset-file-picker {
+  border: 1px solid var(--line);
+  background: #fbfcfc;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.dataset-publish {
+  border: 0;
+  background: var(--blue);
+  color: var(--white);
+}
+
+.dataset-publish:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.dataset-publish-result {
+  min-height: 18px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.dataset-publish-result.success {
+  color: var(--green);
+}
+
+.dataset-publish-result.error {
+  color: #b63838;
 }
 
 .journey-panel {
@@ -1428,6 +1533,10 @@ h1 {
   }
 
   .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .dataset-hub {
     grid-template-columns: 1fr;
   }
 }

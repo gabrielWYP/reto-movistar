@@ -2,7 +2,9 @@
 
 import logging
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from time import perf_counter
+from typing import Annotated, Any
 from uuid import uuid4
 
 from bi_agent.api import create_bi_router
@@ -10,11 +12,16 @@ from bi_agent.application import BIBackend
 from billing_agent.app import create_app as create_billing_app
 from collections_agent.api import create_collections_router
 from collections_agent.application import CollectionsBackend
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from sonia.application.agent_registry import get_agent, list_agents
+from sonia.application.dataset_supervisor import (
+    MAX_DATASET_BYTES,
+    MAX_DATASET_FILES,
+    SupervisorDatasetCoordinator,
+)
 from sonia.application.demo_service import build_demo_scenario, transition_demo
 from sonia.config import Settings, get_settings
 from sonia.domain.agents import AgentDescriptor
@@ -41,10 +48,25 @@ def create_app(
         openapi_url="/api/openapi.json",
     )
     runtime_bi_backend = bi_backend or BIBackend()
-    application.include_router(create_bi_router(runtime_bi_backend))
+    application.include_router(create_bi_router(runtime_bi_backend, allow_manual_upload=False))
     runtime_collections_backend = collections_backend or CollectionsBackend()
-    application.include_router(create_collections_router(runtime_collections_backend))
-    application.mount("/api/billing", create_billing_app(api_prefix=""), name="billing-agent")
+    application.include_router(
+        create_collections_router(
+            runtime_collections_backend,
+            allow_manual_upload=False,
+        )
+    )
+    billing_application = create_billing_app(
+        api_prefix="",
+        allow_manual_upload=False,
+    )
+    application.mount("/api/billing", billing_application, name="billing-agent")
+    dataset_coordinator = SupervisorDatasetCoordinator(
+        runtime_bi_backend,
+        runtime_collections_backend,
+        billing_application.state.dataset_registry,
+    )
+    application.state.dataset_coordinator = dataset_coordinator
 
     @application.middleware("http")
     async def request_observability(
@@ -101,6 +123,41 @@ def create_app(
         if descriptor is None:
             raise HTTPException(status_code=404, detail="Agent not found")
         return descriptor
+
+    @application.get("/api/supervisor/dataset", tags=["supervisor"])
+    async def supervisor_dataset_status() -> dict[str, Any]:
+        """Expose the only shared dataset state visible to specialist tabs."""
+        return dataset_coordinator.status()
+
+    @application.post("/api/supervisor/dataset", tags=["supervisor"])
+    async def publish_supervisor_dataset(
+        files: Annotated[list[UploadFile], File(...)],
+    ) -> dict[str, Any]:
+        """Validate and publish one six-source dataset to every specialist."""
+        if not files or len(files) > MAX_DATASET_FILES:
+            raise HTTPException(
+                status_code=422,
+                detail="Carga un ZIP o las seis fuentes CSV oficiales.",
+            )
+        payload: dict[str, bytes] = {}
+        request_bytes = 0
+        for upload in files:
+            filename = Path(upload.filename or "").name
+            if not filename or Path(filename).suffix.lower() not in {".csv", ".zip"}:
+                raise HTTPException(status_code=422, detail="Solo se aceptan archivos CSV o ZIP.")
+            if filename in payload:
+                raise HTTPException(status_code=422, detail=f"Archivo duplicado: {filename}.")
+            chunks: list[bytes] = []
+            while chunk := await upload.read(1024 * 1024):
+                request_bytes += len(chunk)
+                if request_bytes > MAX_DATASET_BYTES:
+                    raise HTTPException(status_code=413, detail="La carga excede 25 MiB.")
+                chunks.append(chunk)
+            payload[filename] = b"".join(chunks)
+        try:
+            return dataset_coordinator.publish(payload)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
     @application.get(
         "/api/demo/scenario",

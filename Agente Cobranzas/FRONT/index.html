@@ -55,15 +55,11 @@
         <div class="section-heading">
           <div>
             <h2 id="upload-title">Fuente de datos</h2>
-            <p>Carga hasta seis CSV en una sola selección. Permanecen únicamente en memoria.</p>
+            <p>Esta pestaña consume únicamente la fuente publicada desde Supervisor.</p>
           </div>
           <span id="data-status" class="status">Verificando dataset…</span>
         </div>
-        <div class="input-row">
-          <input id="files" type="file" accept=".csv,text/csv" multiple aria-label="Archivos CSV">
-          <button id="upload" class="secondary" type="button">Validar y cargar</button>
-        </div>
-        <div id="upload-result" class="hidden" aria-live="polite"></div>
+        <a class="secondary supervisor-source-link" href="/">Administrar fuente en Supervisor</a>
       </section>
 
       <nav class="nav" aria-label="Consultas disponibles">

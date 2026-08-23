@@ -59,25 +59,23 @@ async function refreshDatasetStatus(datasetId = state.datasetId) {
     state.datasetId = "default";
     $("#cutoff").textContent = "Corte —";
     $("#mode").textContent = status.llm_available ? "Modo asistido · tools verificables" : "Modo local determinístico";
-    $("#dataset-summary").textContent = "Todavía no hay una fuente de datos configurada.";
+    $("#dataset-summary").textContent = "Supervisor todavía no ha publicado una fuente de datos.";
     $("#source-counts").innerHTML = ["customers", "fixed_plant", "mobile_plant", "invoices", "credit_notes"]
       .map(key => '<div class="source-chip"><span>' + escapeHtml(sourceLabel(key)) + '</span><strong>Pendiente</strong></div>').join("");
-    $("#delete-dataset").classList.add("hidden");
     return false;
   }
   state.asOf = status.max_as_of_date;
   state.datasetId = status.dataset_id;
   $("#cutoff").textContent = `Corte ${displayDate(status.max_as_of_date)}`;
   $("#mode").textContent = status.llm_available ? "Modo asistido · tools verificables" : "Modo local determinístico";
-  $("#dataset-summary").textContent = `${status.origin} · LISTO PARA ANALIZAR · ID ${status.dataset_id === "default" ? "predeterminado" : status.dataset_id.slice(0, 10) + "…"}`;
+  $("#dataset-summary").textContent = `${status.origin} · LISTO PARA ANALIZAR`;
   $("#source-counts").innerHTML = status.sources.map(item => `<div class="source-chip"><span>${escapeHtml(sourceLabel(item.key))} · ✓ válido</span><strong>${number(item.records)}</strong></div>`).join("");
-  $("#delete-dataset").classList.toggle("hidden", !status.temporary);
   return true;
 }
 
 function showDatasetNotConfigured() {
   $("#feedback").className = "notice warn";
-  $("#feedback").textContent = "Todavía no hay una fuente de datos configurada. Carga las cinco fuentes de Facturación para comenzar.";
+  $("#feedback").textContent = "Supervisor todavía no ha publicado la fuente compartida.";
   $("#content").innerHTML = '<div class="empty">Fuentes requeridas: Clientes, Planta fija, Planta móvil, Facturas y Notas de crédito. No se requiere la tabla Pagos.</div>';
 }
 
@@ -222,19 +220,6 @@ async function loadView() {
   }
 }
 
-$("#dataset-files").addEventListener("change", async event => {
-  const files=[...event.target.files]; if(!files.length)return;
-  $("#feedback").className="notice";$("#feedback").textContent="Validando dataset antes del análisis…";
-  try {
-    const form=new FormData();files.forEach(file=>form.append("files",file,file.name));
-    const result=await requestJson("/api/datasets",{method:"POST",body:form});
-    state.datasetId=result.dataset_id;await refreshDatasetStatus(result.dataset_id);controls();await loadView();
-  } catch(error) {$("#feedback").className="notice error";$("#feedback").textContent=error.message}
-  event.target.value="";
-});
-
-$("#default-dataset").onclick=async()=>{try{const ready=await refreshDatasetStatus("default");controls();ready?await loadView():showDatasetNotConfigured()}catch(error){$("#feedback").className="notice error";$("#feedback").textContent=error.message}};
-$("#delete-dataset").onclick=async()=>{try{await requestJson(`/api/datasets/${encodeURIComponent(state.datasetId)}`,{method:"DELETE"});const ready=await refreshDatasetStatus("default");controls();ready?await loadView():showDatasetNotConfigured()}catch(error){$("#feedback").className="notice error";$("#feedback").textContent=error.message}};
 document.querySelectorAll(".nav button").forEach(button=>button.onclick=()=>{state.view=button.dataset.view;document.querySelectorAll(".nav button").forEach(item=>item.classList.toggle("active",item===button));controls();loadView()});
 
 (async function initialize(){try{const ready=await refreshDatasetStatus("default");controls();ready?await loadView():showDatasetNotConfigured()}catch(error){controls();$("#feedback").className="notice error";$("#feedback").textContent=error.message;$("#content").innerHTML='<div class="empty">No fue posible consultar el estado de la fuente de datos.</div>'}})();

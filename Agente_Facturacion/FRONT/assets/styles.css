@@ -70,7 +70,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .source-chip strong { font-size: 15px; }
 .micro { grid-column: 1 / -1; font-size: 10px; }
 
-.button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; padding: 0 13px; border: 0; border-radius: 9px; background: var(--movistar-blue); color: white; font-weight: 800; }
+.button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; padding: 0 13px; border: 0; border-radius: 9px; background: var(--movistar-blue); color: white; font-weight: 800; text-decoration: none; }
 .button.secondary { background: #e8eff5; color: #244460; }
 .button.danger { background: #fff0f2; color: var(--red); }
 .nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0; }

@@ -2,7 +2,7 @@
 
 Módulo independiente que reconstruye la cartera B2B, prioriza gestiones de
 cobro y detecta excepciones de aplicación documental. Python calcula todos los
-importes e indicadores; OpenAI interpreta la pregunta, selecciona una o más
+importes e indicadores; DeepSeek vía OpenCode Go interpreta la pregunta, selecciona una o más
 herramientas cerradas y explica únicamente resultados estructurados.
 
 ## Estructura
@@ -28,7 +28,7 @@ router y los recursos mínimos que permiten publicarla junto con SON-IA.
 - priorización reproducible de clientes;
 - aplicaciones de pago y casos que requieren revisión;
 - carga atómica de hasta seis CSV compatibles;
-- preguntas en lenguaje natural con OpenAI y tools;
+- preguntas en lenguaje natural con OpenCode Go, DeepSeek y tools;
 - contrato JSON `1.1` reutilizable por Supervisor y BI.
 
 No realiza conciliación bancaria: el dataset no contiene extractos ni marcas
@@ -61,28 +61,33 @@ Cada KPI devuelve valor, unidad, definición y población utilizada dentro de
 Las reglas de antigüedad, tolerancia y prioridad están centralizadas en
 `BACK/src/collections_agent/rules.py`.
 
-## OpenAI y control de costo
+## OpenCode Go y control de costo
 
-`OPENAI_API_KEY` se inyecta únicamente en runtime. El SDK oficial usa Responses
-API, `gpt-5.6-terra` y razonamiento `low` por defecto. El modelo recibe solo
-schemas y evidencia compacta, nunca CSV completos. Se permiten tres llamadas a
-tools como máximo y 700 tokens de salida por respuesta, ambos configurables.
+`OPENCODE_KEY` se inyecta únicamente en runtime. El adaptador usa el endpoint
+Chat Completions de OpenCode Go y `deepseek-v4-flash` por defecto, igual que BI
+y Facturación. El modelo recibe solo schemas y evidencia compacta, nunca CSV
+completos. Se permiten tres llamadas a tools como máximo y 700 tokens de salida
+por respuesta, ambos configurables.
 
 Sin clave, las cinco vistas y endpoints determinísticos siguen disponibles; el
-endpoint conversacional informa que un administrador debe configurar OpenAI.
+endpoint conversacional informa que un administrador debe configurar OpenCode.
 No existe enrutamiento por palabras clave que se presente como agente de IA.
 
 Variables:
 
-- secret: `OPENAI_API_KEY`;
-- configuración: `SONIA_COLLECTIONS_MODEL`,
-  `SONIA_COLLECTIONS_REASONING_EFFORT`, `SONIA_COLLECTIONS_MAX_TOOL_CALLS`,
+- secret: `OPENCODE_KEY`;
+- configuración: `SONIA_COLLECTIONS_MODEL`, `SONIA_COLLECTIONS_MAX_TOOL_CALLS`,
   `SONIA_COLLECTIONS_MAX_OUTPUT_TOKENS`, límites de carga y dataset opcional;
 - reglas de negocio: `rules.py`, versionado y documentado.
 
 ## Carga de CSV
 
-La carga valida nombre/estructura, encabezados, columnas obligatorias, fechas,
+En SON-IA integrado, la carga manual existe únicamente en Supervisor. La
+pestaña de Cobranzas consulta el estado publicado y no permite seleccionar ni
+reemplazar archivos. El adaptador standalone conserva su endpoint para pruebas
+y desarrollo aislado.
+
+La publicación valida nombre/estructura, encabezados, columnas obligatorias, fechas,
 importes positivos, duplicados y relaciones factura-pago. Un conflicto de
 cliente o cuenta rechaza el paquete completo. Pagos o notas que apuntan a
 facturas fuera del corte se aceptan como excepciones explícitas, nunca se
@@ -98,7 +103,7 @@ cuando todo el paquete es compatible y permanece en memoria.
 - `GET /api/collections/invoice`
 - `GET /api/collections/priorities`
 - `GET /api/collections/exceptions`
-- `POST /api/collections/dataset`
+- `POST /api/collections/dataset` (solo standalone; bloqueado en modo integrado)
 - `POST /api/collections/query`
 - `GET /api/docs`
 
@@ -111,7 +116,7 @@ docker compose --file "Agente Cobranzas/compose.yaml" up --build --wait
 ```
 
 Interfaz: `http://localhost:8081`. Para usar preguntas con IA, define
-`OPENAI_API_KEY` en un `.env` local no versionado o en el secret de Kubernetes.
+`OPENCODE_KEY` en un `.env` local no versionado o en el secret de Kubernetes.
 
 Para desarrollo del backend:
 

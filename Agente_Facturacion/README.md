@@ -61,7 +61,7 @@ Las vistas son:
 - Quiebres de ciclo: evidencia antes / periodo sin documento / después.
 - Notas de crédito: ajustes post-emisión y hallazgos de materialidad.
 - Asistente SON-IA: router cerrado, contexto explícito del navegador y fallback local.
-- Fuente de datos: origen, corte, conteos por fuente, carga y eliminación temporal.
+- Fuente de datos: origen, corte y conteos publicados por Supervisor.
 
 Los códigos técnicos y el JSON completo permanecen disponibles en paneles de trazabilidad cerrados por defecto. La primera capa traduce categorías: validación determinística, señal heurística y calidad de datos.
 
@@ -77,13 +77,18 @@ Los códigos técnicos y el JSON completo permanecen disponibles en paneles de t
 | GET | `/api/gaps` | `billing_cycle_gaps`. |
 | GET | `/api/credit-notes` | `credit_note_review`. |
 | POST | `/api/conversation` | Router cerrado, respuesta grounded y contexto explícito. |
-| POST | `/api/datasets` | Carga multipart de cinco CSV o un ZIP. |
+| POST | `/api/datasets` | Carga standalone; bloqueada en el backend integrado. |
 | GET | `/api/datasets/{dataset_id}/status` | Conteos y corte, sin rutas internas. |
 | DELETE | `/api/datasets/{dataset_id}` | Libera el dataset temporal de la memoria del proceso. |
 
 Las cinco tools conservan `AgentResponse v1.0`: `contract_version`, `agent`, `operation`, `as_of_date`, `entity`, `status`, `metrics`, `findings`, `alerts`, `recommended_actions`, `evidence`, `data_quality`, `visualization_hints`, `analysis_scope`, `methodology` y `upstream_inputs`.
 
 ## Datasets dinámicos
+
+En SON-IA integrado, Supervisor es la única superficie de carga manual y
+publica el dataset validado como fuente `default` de Facturación. La pestaña del
+agente es de solo lectura respecto a la fuente. El registro de cargas aisladas
+descrito a continuación se conserva para ejecución y pruebas standalone.
 
 Fuentes Billing requeridas:
 

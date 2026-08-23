@@ -72,9 +72,11 @@ Estas fronteras están montadas directamente en el backend modular de `main`.
 
 ## Dataset
 
-Carga los seis CSV o un ZIP desde el front BI. El backend acepta cargas
-multipart acumulativas de hasta 25 MiB, construye el modelo en memoria y no
-escribe los archivos en disco. El dataset se pierde al reiniciar el contenedor.
+En SON-IA integrado, Supervisor es la única fuente de carga manual. BI muestra
+y analiza el dataset compartido publicado por `POST /api/supervisor/dataset`;
+su pestaña no permite seleccionar ni reemplazar archivos. El adaptador
+`POST /api/bi/dataset` se conserva solo para pruebas y desarrollo standalone.
+El dataset permanece en memoria y se pierde al reiniciar el contenedor.
 
 ## Ejecución local
 
@@ -100,8 +102,7 @@ La portada queda en `http://localhost:8080/` y BI en
 `http://localhost:8080/bi/`.
 
 El Compose de este directorio se conserva únicamente para desarrollo aislado
-del agente. El dataset se selecciona desde la interfaz BI después del arranque;
-no requiere bind mounts ni una ruta del host.
+del agente; no requiere bind mounts ni una ruta del host.
 
 Abre `http://localhost:8082`. Solo `bi-front` publica puerto; `bi-back` queda en
 la red interna. Para cambiar el puerto usa `SONIA_BI_PUBLIC_PORT`.

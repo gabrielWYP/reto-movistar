@@ -54,9 +54,11 @@ def test_frontend_marks_only_successful_llm_responses() -> None:
     assert "aiBadge.hidden = !aiGenerated" in javascript
 
 
-def test_shared_proxy_and_frontend_accept_six_file_batch_uploads() -> None:
+def test_shared_proxy_and_supervisor_own_the_only_manual_upload() -> None:
     proxy = REPOSITORY / "front" / "nginx.conf.template"
-    javascript = (FRONTEND / "assets" / "app.js").read_text(encoding="utf-8")
+    specialist_javascript = (FRONTEND / "assets" / "app.js").read_text(encoding="utf-8")
+    supervisor_javascript = (REPOSITORY / "front" / "assets" / "app.js").read_text(encoding="utf-8")
     assert "client_max_body_size 26m;" in proxy.read_text(encoding="utf-8")
-    assert 'form.append("files", file)' in javascript
-    assert "files.length > 6" in javascript
+    assert "new FormData()" not in specialist_javascript
+    assert "/api/supervisor/dataset" in supervisor_javascript
+    assert 'form.append("files", file, file.name)' in supervisor_javascript

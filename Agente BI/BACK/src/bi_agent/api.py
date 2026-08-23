@@ -43,7 +43,11 @@ class BIToolRequest(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
-def create_bi_router(backend: BIBackend) -> APIRouter:
+def create_bi_router(
+    backend: BIBackend,
+    *,
+    allow_manual_upload: bool = True,
+) -> APIRouter:
     """Create routes mounted by the single shared FastAPI application."""
     router = APIRouter(prefix="/api/bi", tags=["bi"])
 
@@ -60,6 +64,11 @@ def create_bi_router(backend: BIBackend) -> APIRouter:
     async def upload_dataset(
         files: Annotated[list[UploadFile], File(...)],
     ) -> dict[str, Any]:
+        if not allow_manual_upload:
+            raise HTTPException(
+                status_code=403,
+                detail="La carga manual está centralizada en Supervisor SON-IA.",
+            )
         if not files:
             raise HTTPException(status_code=422, detail="Selecciona al menos un CSV o ZIP.")
         payload: dict[str, bytes] = {}

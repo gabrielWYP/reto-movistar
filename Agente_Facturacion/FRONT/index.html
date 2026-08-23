@@ -38,13 +38,10 @@
     <section class="dataset-bar" aria-labelledby="dataset-title">
       <div><p class="eyebrow">Fuente de datos</p><h2 id="dataset-title">Dataset activo</h2><p id="dataset-summary">Inicializando fuente…</p></div>
       <div class="dataset-actions">
-        <button id="default-dataset" class="button secondary" type="button">Usar predeterminado</button>
-        <label class="button" for="dataset-files">Cargar nuevo dataset</label>
-        <input id="dataset-files" type="file" accept=".csv,.zip" multiple hidden>
-        <button id="delete-dataset" class="button danger hidden" type="button">Eliminar carga</button>
+        <a class="button secondary" href="/">Administrar en Supervisor</a>
       </div>
       <div id="source-counts" class="source-counts"></div>
-      <p id="upload-help" class="micro">Carga las 5 fuentes de Facturación o un ZIP compatible: Clientes, Planta fija, Planta móvil, Facturas y Notas de crédito. No se requiere Pagos. Los archivos son temporales y aislados mediante dataset_id.</p>
+      <p id="upload-help" class="micro">Facturación consume la fuente única publicada por Supervisor. Esta pestaña no admite cargas ni reemplazos manuales.</p>
     </section>
 
     <nav class="nav" aria-label="Módulos de Facturación">

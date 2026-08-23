@@ -89,6 +89,34 @@
         </div>
       </section>
 
+      <section class="dataset-hub" aria-labelledby="dataset-hub-title">
+        <div class="dataset-hub-copy">
+          <p class="eyebrow">Fuente única de verdad</p>
+          <h2 id="dataset-hub-title">Dataset compartido del Supervisor</h2>
+          <p id="dataset-hub-summary">
+            Publica las seis fuentes oficiales una sola vez para Facturación, Cobranzas y BI.
+          </p>
+          <div id="dataset-agent-status" class="dataset-agent-status" aria-live="polite"></div>
+        </div>
+        <div class="dataset-hub-actions">
+          <span id="supervisor-dataset-status" class="pill neutral">Verificando fuente</span>
+          <label class="dataset-file-picker" for="supervisor-dataset-files">
+            <span id="dataset-file-label">Seleccionar seis CSV o un ZIP</span>
+          </label>
+          <input
+            id="supervisor-dataset-files"
+            type="file"
+            accept=".csv,.zip,text/csv,application/zip"
+            multiple
+            hidden
+          />
+          <button id="publish-dataset" class="dataset-publish" type="button">
+            Validar y publicar
+          </button>
+          <p id="dataset-publish-result" class="dataset-publish-result" aria-live="polite"></p>
+        </div>
+      </section>
+
       <section class="journey-panel" aria-labelledby="journey-title">
         <div class="section-heading compact">
           <div>

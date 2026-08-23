@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from bi_agent.application import BIBackend
 from collections_agent.application import CollectionsBackend
 from collections_agent.data import SoniaDataset
-from collections_agent.llm_runtime import OpenAIRuntime
+from collections_agent.llm_runtime import OpenCodeRuntime
 from collections_agent.service import CollectionsService
 from fastapi.testclient import TestClient
 
@@ -73,7 +73,7 @@ def test_shared_backend_mounts_collections_router() -> None:
     assert portfolio.json()["metrics"]["outstanding_balance"] == 60.0
 
 
-def test_collections_dataset_upload_is_validated_and_used() -> None:
+def test_collections_shared_route_rejects_direct_manual_upload() -> None:
     app = create_app(
         _settings(),
         bi_backend=BIBackend(),
@@ -91,16 +91,10 @@ def test_collections_dataset_upload_is_validated_and_used() -> None:
             "/api/collections/dataset",
             files={"files": ("facturas.csv", invoices, "text/csv")},
         )
-        after = client.get(
-            "/api/collections/invoice",
-            params={"id": "FAC-002", "as_of_date": "2026-08-07"},
-        )
 
     assert before.status_code == 503
-    assert uploaded.status_code == 200
-    assert uploaded.json()["ready_for_analysis"] is True
-    assert after.status_code == 200
-    assert after.json()["metrics"]["outstanding_balance"] == 75.0
+    assert uploaded.status_code == 403
+    assert "Supervisor" in uploaded.json()["detail"]
 
 
 def test_collections_rejects_an_incompatible_csv_without_mixing_data() -> None:
@@ -120,34 +114,49 @@ def test_collections_rejects_an_incompatible_csv_without_mixing_data() -> None:
             params={"id": "FAC-001", "as_of_date": "2026-08-07"},
         )
 
-    assert response.status_code == 422
+    assert response.status_code == 403
     assert existing.status_code == 200
 
 
-def test_collections_query_uses_openai_tools_and_reports_ai_mode() -> None:
+def test_collections_query_uses_opencode_tools_and_reports_ai_mode() -> None:
     responses = [
         {
-            "output": [
+            "choices": [
                 {
-                    "type": "function_call",
-                    "call_id": "call-1",
-                    "name": "collection_priorities",
-                    "arguments": '{"limit":5}',
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "type": "function",
+                                "function": {
+                                    "name": "collection_priorities",
+                                    "arguments": '{"limit":5}',
+                                },
+                            }
+                        ],
+                    }
                 }
             ],
-            "usage": {"input_tokens": 20, "output_tokens": 5, "total_tokens": 25},
+            "usage": {"prompt_tokens": 20, "completion_tokens": 5, "total_tokens": 25},
         },
         {
-            "output": [{"type": "message", "content": []}],
-            "output_text": "Prioriza el saldo vencido documentado.",
-            "usage": {"input_tokens": 30, "output_tokens": 8, "total_tokens": 38},
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "Prioriza el saldo vencido documentado.",
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 30, "completion_tokens": 8, "total_tokens": 38},
         },
     ]
-    runtime = OpenAIRuntime(create_response=Mock(side_effect=responses))
+    runtime = OpenCodeRuntime(post=Mock(side_effect=responses))
     backend = CollectionsBackend(service=_collections_backend().service(), runtime=runtime)
     app = create_app(_settings(), bi_backend=BIBackend(), collections_backend=backend)
 
-    with patch.dict("os.environ", {"OPENAI_API_KEY": "test-only"}, clear=True):
+    with patch.dict("os.environ", {"OPENCODE_KEY": "test-only"}, clear=True):
         with TestClient(app) as client:
             response = client.post(
                 "/api/collections/query",
@@ -157,16 +166,16 @@ def test_collections_query_uses_openai_tools_and_reports_ai_mode() -> None:
     assert response.status_code == 200
     assert response.json()["mode"] == "llm"
     assert response.json()["tool_used"] == "collection_priorities"
-    assert response.json()["llm"]["provider"] == "openai"
+    assert response.json()["llm"]["provider"] == "opencode-go"
     assert response.json()["usage"]["total_tokens"] == 63
 
 
 def test_collections_query_reports_provider_failure_without_keyword_fallback() -> None:
-    runtime = OpenAIRuntime(create_response=Mock(side_effect=RuntimeError("provider unavailable")))
+    runtime = OpenCodeRuntime(post=Mock(side_effect=RuntimeError("provider unavailable")))
     backend = CollectionsBackend(service=_collections_backend().service(), runtime=runtime)
     app = create_app(_settings(), bi_backend=BIBackend(), collections_backend=backend)
 
-    with patch.dict("os.environ", {"OPENAI_API_KEY": "test-only"}, clear=True):
+    with patch.dict("os.environ", {"OPENCODE_KEY": "test-only"}, clear=True):
         with TestClient(app) as client:
             response = client.post(
                 "/api/collections/query",

@@ -65,6 +65,7 @@ button { padding: 10px 14px; color: #25415e; background: #e5edf6; border: 0; bor
 button:hover { filter: brightness(.97); }
 .primary, .nav button.active { color: white; background: var(--blue); }
 .primary { min-width: 130px; }
+.supervisor-source-link { display: inline-flex; width: fit-content; margin-top: 12px; padding: 10px 14px; border-radius: 10px; background: #e5edf6; color: #25415e; font-weight: 700; text-decoration: none; }
 button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid #125ea9; outline-offset: 2px; }
 
 .nav { display: flex; flex-wrap: wrap; gap: 9px; margin: 22px 0; }

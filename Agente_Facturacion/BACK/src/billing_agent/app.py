@@ -10,12 +10,12 @@ from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from .config import Settings
+from .data import DatasetValidationError
+from .datasets import DatasetRegistry
 from .openai_runtime import OpenAIRuntime
 from .presentation import presentation_for
 from .runtime import BillingAgentRuntime, SessionContext
-from .config import Settings
-from .datasets import DatasetRegistry
-from .data import DatasetValidationError
 
 LOG = logging.getLogger("sonia.billing")
 
@@ -34,7 +34,12 @@ class ConversationRequest(BaseModel):
     context: ConversationContext = Field(default_factory=ConversationContext)
 
 
-def create_app(settings: Settings | None = None, *, api_prefix: str = "/api") -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    api_prefix: str = "/api",
+    allow_manual_upload: bool = True,
+) -> FastAPI:
     """Create the standalone app or a namespaced shared-backend sub-application."""
     runtime_settings = settings or Settings.from_environment()
     normalized_prefix = api_prefix.rstrip("/")
@@ -138,6 +143,11 @@ def create_app(settings: Settings | None = None, *, api_prefix: str = "/api") ->
 
     @application.post(api_path("/datasets"), status_code=201, tags=["datasets"])
     async def upload_dataset(files: list[UploadFile] = File(...)) -> dict[str, object]:
+        if not allow_manual_upload:
+            raise HTTPException(
+                status_code=403,
+                detail="La carga manual está centralizada en Supervisor SON-IA.",
+            )
         uploads: list[tuple[str, bytes]] = []
         accumulated = 0
         for upload in files:
@@ -155,6 +165,11 @@ def create_app(settings: Settings | None = None, *, api_prefix: str = "/api") ->
 
     @application.delete(api_path("/datasets/{dataset_id}"), status_code=204, tags=["datasets"])
     async def delete_dataset(dataset_id: str) -> None:
+        if not allow_manual_upload:
+            raise HTTPException(
+                status_code=403,
+                detail="La fuente compartida solo se administra desde Supervisor SON-IA.",
+            )
         try:
             registry.delete(dataset_id)
         except ValueError as error:

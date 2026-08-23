@@ -262,6 +262,68 @@ function showToast(message) {
   window.setTimeout(() => toast.classList.remove("is-visible"), 2800);
 }
 
+function renderDatasetStatus(payload) {
+  const ready = payload.dataset_configured === true;
+  const status = byId("supervisor-dataset-status");
+  status.textContent = ready ? "Publicado para 3 agentes" : "Pendiente de publicación";
+  status.className = `pill ${ready ? "dataset-ready" : "neutral"}`;
+  byId("dataset-hub-summary").textContent = ready
+    ? `${payload.dataset_file_count} fuentes · ${payload.dataset_bytes} bytes · administrado por Supervisor.`
+    : "Publica las seis fuentes oficiales una sola vez para Facturación, Cobranzas y BI.";
+  const labels = { billing: "Facturación", collections: "Cobranzas", bi: "BI" };
+  byId("dataset-agent-status").innerHTML = Object.entries(payload.agents || {})
+    .map(([agent, state]) => `
+      <span class="dataset-agent-chip ${state.dataset_configured ? "ready" : "pending"}">
+        <strong>${labels[agent] || agent}</strong>
+        ${state.dataset_configured ? "Disponible" : "Sin publicar"}
+      </span>`)
+    .join("");
+}
+
+async function loadDatasetStatus() {
+  try {
+    const response = await fetch("/api/supervisor/dataset");
+    if (!response.ok) throw new Error(`Dataset status failed with ${response.status}`);
+    renderDatasetStatus(await response.json());
+  } catch (error) {
+    console.error(error);
+    byId("supervisor-dataset-status").textContent = "Estado no disponible";
+  }
+}
+
+async function publishDataset() {
+  const files = [...byId("supervisor-dataset-files").files];
+  const result = byId("dataset-publish-result");
+  const button = byId("publish-dataset");
+  const validSelection = files.length === 1 || files.length === 6;
+  if (!validSelection) {
+    result.textContent = "Selecciona las seis fuentes CSV o un único ZIP compatible.";
+    result.className = "dataset-publish-result error";
+    return;
+  }
+  const form = new FormData();
+  files.forEach((file) => form.append("files", file, file.name));
+  button.disabled = true;
+  button.textContent = "Validando los tres agentes…";
+  result.textContent = "La publicación será atómica: ningún agente cambia hasta validar todo.";
+  result.className = "dataset-publish-result";
+  try {
+    const response = await fetch("/api/supervisor/dataset", { method: "POST", body: form });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "El dataset no es compatible.");
+    renderDatasetStatus(payload);
+    result.textContent = "Dataset publicado. Los tres especialistas ya consumen esta fuente.";
+    result.className = "dataset-publish-result success";
+    showToast("Fuente compartida publicada por Supervisor.");
+  } catch (error) {
+    result.textContent = error.message || "No se pudo publicar el dataset.";
+    result.className = "dataset-publish-result error";
+  } finally {
+    button.disabled = false;
+    button.textContent = "Validar y publicar";
+  }
+}
+
 async function performTransition() {
   const copy = STATE_COPY[appState.currentState];
   if (!copy.action || appState.busy) return;
@@ -323,4 +385,12 @@ async function initialize() {
 
 byId("primary-action").addEventListener("click", performTransition);
 byId("reset-action").addEventListener("click", resetDemo);
+byId("supervisor-dataset-files").addEventListener("change", (event) => {
+  const count = event.target.files.length;
+  byId("dataset-file-label").textContent = count
+    ? `${count} archivo${count === 1 ? "" : "s"} seleccionado${count === 1 ? "" : "s"}`
+    : "Seleccionar seis CSV o un ZIP";
+});
+byId("publish-dataset").addEventListener("click", publishDataset);
 initialize();
+loadDatasetStatus();

@@ -13,7 +13,7 @@ const content = byId("content");
 const controls = byId("controls");
 const feedback = byId("feedback");
 
-const providerText = { openai: "OpenAI" };
+const providerText = { "opencode-go": "OpenCode Go" };
 
 const metricLabels = {
   total_billed: "Facturado",
@@ -452,50 +452,19 @@ async function refreshStatus() {
     const aiBadge = byId("ai-status");
     aiBadge.textContent = data.llm_available ? "Consultas con IA disponibles" : "Consultas con IA no disponibles";
     aiBadge.title = data.llm_available
-      ? `Proveedor: ${providerText[data.llm?.provider] || data.llm?.provider || "OpenAI"} · Modelo: ${data.llm?.model || data.model}`
+      ? `Proveedor: ${providerText[data.llm?.provider] || data.llm?.provider || "OpenCode Go"} · Modelo: ${data.llm?.model || data.model}`
       : "La configuración debe realizarla un administrador.";
     aiBadge.className = `status ${data.llm_available ? "ready" : "warn"}`;
     const dataBadge = byId("data-status");
-    dataBadge.textContent = data.dataset_configured ? "Dataset listo" : "Carga los CSV para comenzar";
+    dataBadge.textContent = data.dataset_configured
+      ? "Fuente de Supervisor disponible"
+      : "Supervisor aún no publicó datos";
     dataBadge.className = `status ${data.dataset_configured ? "ready" : "warn"}`;
     return data.dataset_configured;
   } catch {
     byId("ai-status").textContent = "No se pudo verificar la IA";
     byId("data-status").textContent = "No se pudo verificar el dataset";
     return false;
-  }
-}
-
-async function uploadDataset() {
-  const files = byId("files").files;
-  const result = byId("upload-result");
-  if (!files.length) {
-    result.className = "notice error";
-    result.textContent = "Selecciona al menos un archivo CSV.";
-    return;
-  }
-  if (files.length > 6) {
-    result.className = "notice error";
-    result.textContent = "Selecciona como máximo seis archivos CSV.";
-    return;
-  }
-  const form = new FormData();
-  for (const file of files) form.append("files", file);
-  result.className = "notice";
-  result.textContent = "Validando archivos…";
-  try {
-    const response = await fetch(`${API_BASE}/dataset`, { method: "POST", body: form });
-    const data = await response.json();
-    if (!response.ok) throw new Error(errorMessage(data, "Los archivos no son compatibles."));
-    const accepted = (data.accepted_tables || []).map((item) => `${item.file}: ${item.records} registros`).join(" · ");
-    result.className = "notice success";
-    const warnings = (data.warnings || []).join(" ");
-    result.textContent = `${data.message}${accepted ? ` ${accepted}` : ""}${warnings ? ` Observaciones: ${warnings}` : ""}`;
-    await refreshStatus();
-    await loadView();
-  } catch (error) {
-    result.className = "notice error";
-    result.textContent = error.message || "No se pudieron validar los archivos.";
   }
 }
 
@@ -543,10 +512,9 @@ document.querySelectorAll(".nav button").forEach((button) => {
   });
 });
 
-byId("upload").addEventListener("click", uploadDataset);
 byId("ask").addEventListener("click", askAgent);
 
 renderControls();
 const datasetReady = await refreshStatus();
 if (datasetReady) await loadView();
-else setNotice("Carga el CSV de facturas y, si están disponibles, los demás archivos del dataset.", "error");
+else setNotice("Supervisor todavía no ha publicado la fuente compartida.", "error");

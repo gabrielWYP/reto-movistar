@@ -161,6 +161,13 @@ class DatasetRegistry:
         self._records[dataset_id] = record
         return record
 
+    def publish_default(self, service: BillingService, *, origin: str) -> DatasetRecord:
+        """Replace the shared default with a Supervisor-validated service."""
+        record = DatasetRecord("default", origin, service, time.time(), None)
+        self._records["default"] = record
+        self._default_error = None
+        return record
+
     def delete(self, dataset_id: str) -> None:
         if dataset_id == "default":
             raise ValueError("El dataset predeterminado no se elimina por API.")

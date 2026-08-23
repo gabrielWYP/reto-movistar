@@ -99,6 +99,19 @@ class CollectionsBackend:
             self._dataset_error = None
         return report.to_dict()
 
+    def publish_dataset(
+        self,
+        service: CollectionsService,
+        *,
+        source: str,
+    ) -> dict[str, Any]:
+        """Publish a dataset already validated by the shared Supervisor."""
+        with self._lock:
+            self._service = service
+            self._dataset_source = source
+            self._dataset_error = None
+            return self.dataset_status()
+
     def execute_tool(
         self,
         operation: str,
