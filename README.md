@@ -65,30 +65,49 @@ Abrir `http://localhost:8080`. Para detener el entorno:
 docker compose down --volumes
 ```
 
-El centro de operaciones sirve el front BI en `http://localhost:8080/bi/` y el
-backend compartido publica sus contratos en `/api/bi/*`. El dataset se carga
-desde esa interfaz o mediante `POST /api/bi/dataset`; permanece en RAM dentro
-del contenedor `back` y se pierde al reiniciar el pod.
+El Supervisor en `http://localhost:8080/` es la única superficie de carga
+manual. `POST /api/supervisor/dataset` valida las seis fuentes contra
+Facturación, Cobranzas y BI antes de publicarlas de forma atómica en RAM. Si un
+agente rechaza el paquete, ninguno cambia. El dataset se pierde al reiniciar el
+pod.
 
 El Agente de Cobranzas se abre desde su tarjeta o directamente en
 `http://localhost:8080/agents/collections/index.html`. Su API vive bajo
-`/api/collections/*`; los CSV validados también permanecen en RAM y no se
-mezclan con el dataset anterior cuando una carga es incompatible.
+`/api/collections/*`. Las pestañas de especialistas son de solo lectura respecto
+a la fuente y muestran exclusivamente lo publicado por Supervisor.
 
-BI usa OpenCode Go cuando `OPENCODE_KEY` está disponible. Cobranzas usa el SDK
-oficial de OpenAI y Responses API cuando el backend recibe `OPENAI_API_KEY`.
-Ambos agentes ejecutan los cálculos en Python y solo entregan evidencia compacta
-al modelo. Las claves nunca se envían al frontend ni se incluyen en la imagen.
+BI y Cobranzas usan OpenCode Go con `deepseek-v4-flash` cuando `OPENCODE_KEY`
+está disponible. Ambos agentes ejecutan los cálculos en Python y solo entregan
+evidencia compacta al modelo. La clave nunca se envía al frontend ni se incluye
+en la imagen.
 
 ## Ejecutar solo el backend
 
+### Entorno de desarrollo Python 3.12
+
+La versión de referencia es Python 3.12, igual que en CI. Desde la raíz del
+repositorio se puede crear un único entorno para el backend compartido y los
+tres agentes:
+
 ```bash
-cd back
-python -m venv .venv
-.venv/bin/pip install -e '../Agente BI/BACK[dev]'
-.venv/bin/pip install -e '../Agente Cobranzas/BACK[dev]'
-.venv/bin/pip install -e '.[dev]'
-.venv/bin/python -m sonia
+uv venv --python 3.12 .venv-py312
+uv pip install --python .venv-py312/bin/python \
+  --editable './Agente BI/BACK[dev]' \
+  --editable './Agente Cobranzas/BACK[dev]' \
+  --editable './Agente_Facturacion/BACK[dev]' \
+  --editable './back[dev]'
+source .venv-py312/bin/activate
+python --version
+```
+
+El resultado esperado es `Python 3.12.x`. El entorno `.venv` anterior no es la
+referencia de validación porque fue creado con Python 3.14.
+
+### Iniciar la API
+
+```bash
+source .venv-py312/bin/activate
+python -m sonia
 ```
 
 Los contratos operativos están disponibles en `GET /health`, `GET /api/agents`,
