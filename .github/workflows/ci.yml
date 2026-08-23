@@ -284,28 +284,56 @@ jobs:
             'import json,sys; payload=json.loads(sys.argv[1]); assert payload["status"] == "dataset_not_configured"' \
             "${billing_status}"
 
-          billing_upload="$(curl --fail --silent --show-error \
-            --request POST http://127.0.0.1:18081/api/billing/datasets \
-            -F 'files=@back/tests/fixtures/billing/001_TBL_CLIENTES_B2B.csv;type=text/csv' \
-            -F 'files=@back/tests/fixtures/billing/002_TBL_PLANTA_FIJA_B2B.csv;type=text/csv' \
-            -F 'files=@back/tests/fixtures/billing/003_TBL_PLANTA_MOVIL_B2B.csv;type=text/csv' \
-            -F 'files=@back/tests/fixtures/billing/005_TBL_FACTURAS_B2B.csv;type=text/csv' \
-            -F 'files=@back/tests/fixtures/billing/006_TBL_NOTAS_CREDITO_B2B.csv;type=text/csv')"
+          supervisor_upload="$(curl --fail --silent --show-error \
+            --request POST http://127.0.0.1:18081/api/supervisor/dataset \
+            -F 'files=@back/tests/fixtures/supervisor/001_TBL_CLIENTES_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/supervisor/002_TBL_PLANTA_FIJA_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/supervisor/003_TBL_PLANTA_MOVIL_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/supervisor/004_TBL_PAGOS_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/supervisor/005_TBL_FACTURAS_B2B.csv;type=text/csv' \
+            -F 'files=@back/tests/fixtures/supervisor/006_TBL_NOTAS_CREDITO_B2B.csv;type=text/csv')"
           python -c \
-            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["source_counts"]["invoices"] == 1' \
-            "${billing_upload}"
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["dataset_source"] == "supervisor"; assert payload["dataset_file_count"] == 6; assert all(agent["dataset_configured"] for agent in payload["agents"].values())' \
+            "${supervisor_upload}"
 
-          collections_upload="$(curl --fail --silent --show-error \
-            --request POST http://127.0.0.1:18081/api/collections/dataset \
-            -F 'files=@back/tests/fixtures/collections/001_TBL_CLIENTES_B2B.csv;type=text/csv' \
-            -F 'files=@back/tests/fixtures/collections/002_TBL_PLANTA_FIJA_B2B.csv;type=text/csv' \
-            -F 'files=@back/tests/fixtures/collections/003_TBL_PLANTA_MOVIL_B2B.csv;type=text/csv' \
-            -F 'files=@back/tests/fixtures/collections/004_TBL_PAGOS_B2B.csv;type=text/csv' \
-            -F 'files=@back/tests/fixtures/collections/005_TBL_FACTURAS_B2B.csv;type=text/csv' \
-            -F 'files=@back/tests/fixtures/collections/006_TBL_NOTAS_CREDITO_B2B.csv;type=text/csv')"
+          billing_status="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18081/api/billing/status)"
           python -c \
-            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["ready_for_analysis"]; assert len(payload["accepted_tables"]) == 6' \
-            "${collections_upload}"
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["origin"] == "Supervisor SON-IA"; assert payload["source_counts"]["invoices"] == 1' \
+            "${billing_status}"
+
+          collections_status="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18081/api/collections/status)"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["dataset_source"] == "supervisor"; assert payload["dataset_configured"]' \
+            "${collections_status}"
+
+          bi_status="$(curl --fail --silent --show-error \
+            http://127.0.0.1:18081/api/bi/status)"
+          python -c \
+            'import json,sys; payload=json.loads(sys.argv[1]); assert payload["dataset_source"] == "supervisor"; assert payload["dataset_file_count"] == 6' \
+            "${bi_status}"
+
+          billing_upload_status="$(curl --silent --show-error \
+            --output /tmp/billing-upload.json \
+            --write-out '%{http_code}' \
+            --request POST http://127.0.0.1:18081/api/billing/datasets \
+            -F 'files=@back/tests/fixtures/supervisor/001_TBL_CLIENTES_B2B.csv;type=text/csv')"
+          test "${billing_upload_status}" = "403"
+
+          collections_upload_status="$(curl --silent --show-error \
+            --output /tmp/collections-upload.json \
+            --write-out '%{http_code}' \
+            --request POST http://127.0.0.1:18081/api/collections/dataset \
+            -F 'files=@back/tests/fixtures/supervisor/001_TBL_CLIENTES_B2B.csv;type=text/csv')"
+          test "${collections_upload_status}" = "403"
+
+          bi_upload_status="$(curl --silent --show-error \
+            --output /tmp/bi-upload.json \
+            --write-out '%{http_code}' \
+            --request POST http://127.0.0.1:18081/api/bi/dataset \
+            -F 'files=@back/tests/fixtures/supervisor/001_TBL_CLIENTES_B2B.csv;type=text/csv')"
+          test "${bi_upload_status}" = "403"
 
           collections_query_status="$(curl --silent --show-error \
             --output /tmp/collections-query.json \

@@ -10,6 +10,7 @@ from sonia.config import Settings
 from sonia.entrypoints.api import create_app
 
 ROOT = Path(__file__).resolve().parents[3]
+SUPERVISOR_FIXTURES = ROOT / "back" / "tests" / "fixtures" / "supervisor"
 
 
 def _settings() -> Settings:
@@ -29,57 +30,20 @@ def _dataset_files(
     billing_compatible: bool = True,
     invoice_total: str = "118",
 ) -> list[tuple[str, tuple[str, bytes, str]]]:
-    invoice_columns = [
-        "NUMERO_IDENTIFICACION_FISCAL",
-        "RAZON_SOCIAL",
-        "COD_CLIENTE",
-        "COD_CUENTA",
-        "NRO_DOC_FISCAL",
-        "FUENTE",
-        "SISTEMA",
-        "FECHA_EMISION",
-        "FECHA_VTO",
-    ]
-    invoice_values = [
-        "201",
-        "CLIENT_001",
-        "C1",
-        "ACC_001",
-        "F001",
-        "FACTURACION CICLICA",
-        "S1",
-        "2026-08-01",
-        "2026-08-31",
-    ]
-    if billing_compatible:
-        invoice_columns.append("MONEDA")
-        invoice_values.append("PEN")
-    invoice_columns.extend(["CHARGE_NET_AMOUNT", "CHARGE_IGV_INVOICE", "CHARGE_TOTAL_AMOUNT"])
-    invoice_values.extend(["100", "18", invoice_total])
-
     sources = {
-        "001_TBL_CLIENTES_B2B.csv": ("NUMERO_IDENTIFICACION_FISCAL|RAZON_SOCIAL\n201|CLIENT_001\n"),
-        "002_TBL_PLANTA_FIJA_B2B.csv": (
-            "RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|CICLO|STATUS_DESC\n"
-            "CLIENT_001|C1|ACC_001|1|Active\n"
-        ),
-        "003_TBL_PLANTA_MOVIL_B2B.csv": (
-            "RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|PRODUCTO|ESTADO_LINEA\n"
-            "CLIENT_001|C1|ACC_001|MOVIL|Activo\n"
-        ),
-        "004_TBL_PAGOS_B2B.csv": (
-            "RAZON_SOCIAL|COD_CUENTA|FACTURA_AFECTADA|FECHA_PAGO|MONTO_PAGADO\n"
-            "CLIENT_001|ACC_001|F001|2026-08-15|40\n"
-        ),
-        "005_TBL_FACTURAS_B2B.csv": (
-            "|".join(invoice_columns) + "\n" + "|".join(invoice_values) + "\n"
-        ),
-        "006_TBL_NOTAS_CREDITO_B2B.csv": (
-            "NUMERO_IDENTIFICACION_FISCAL|RAZON_SOCIAL|COD_CUENTA|NRO_DOC_FISCAL|"
-            "FACTURA_AFECTADA|FECHAEMISION|MONEDA|MONTO_SIN_IGV|SUBTOTAL|MONTO\n"
-            "201|CLIENT_001|ACC_001|NC001|F001|2026-08-02|PEN|10|10|11.8\n"
-        ),
+        path.name: path.read_text(encoding="utf-8") for path in SUPERVISOR_FIXTURES.glob("*.csv")
     }
+    invoice_lines = sources["005_TBL_FACTURAS_B2B.csv"].splitlines()
+    invoice_columns = invoice_lines[0].split("|")
+    invoice_values = invoice_lines[1].split("|")
+    invoice_values[invoice_columns.index("CHARGE_TOTAL_AMOUNT")] = invoice_total
+    if not billing_compatible:
+        currency_index = invoice_columns.index("MONEDA")
+        invoice_columns.pop(currency_index)
+        invoice_values.pop(currency_index)
+    sources["005_TBL_FACTURAS_B2B.csv"] = (
+        "|".join(invoice_columns) + "\n" + "|".join(invoice_values) + "\n"
+    )
     return [
         ("files", (name, content.encode("utf-8"), "text/csv")) for name, content in sources.items()
     ]
