@@ -38,10 +38,10 @@ Selected Feature Branch Chain: app1 targets a draft tracker; each later app PR t
 
 ## Phase 2: Judge and Specialists
 
-- [ ] 2.1 RED: add `back/tests/unit/test_judge.py` for all Judge scenarios.
-- [ ] 2.2 GREEN: implement `application/judge.py`; REFACTOR deterministic-first rubric/provider metadata/docs.
-- [ ] 2.3 RED: add `back/tests/unit/test_specialist_adapters.py` for bound inputs, read-only tools, normalized lineage, handoffs.
-- [ ] 2.4 GREEN: implement `application/specialist_adapters.py` and registry/specialist wiring; REFACTOR envelopes/docs.
+- [x] 2.1 RED: add `back/tests/unit/test_judge.py` for all Judge scenarios.
+- [x] 2.2 GREEN: implement `application/judge.py`; REFACTOR deterministic-first rubric/provider metadata/docs.
+- [x] 2.3 RED: add `back/tests/unit/test_specialist_adapters.py` for bound inputs, read-only tools, normalized lineage, handoffs.
+- [x] 2.4 GREEN: implement `application/specialist_adapters.py` and registry/specialist wiring; REFACTOR envelopes/docs.
 
 ## Phase 3: Runner and Recovery
 
