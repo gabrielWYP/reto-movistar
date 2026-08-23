@@ -1,0 +1,38 @@
+change: autonomous-revenue-orchestration
+phase: apply
+artifact_store: openspec
+delivery_strategy: ask-on-risk
+chain_strategy: feature-branch-chain
+decision_needed_before_apply: false
+artifacts:
+  exploration: true
+  proposal: true
+  specs: true
+  design: true
+  tasks: true
+  verify_report: false
+tasks_progress:
+  completed: []
+  pending:
+    - "0.1"
+    - "0.2"
+    - "1.1"
+    - "1.2"
+    - "1.3"
+    - "1.4"
+    - "2.1"
+    - "2.2"
+    - "2.3"
+    - "2.4"
+    - "3.1"
+    - "3.2"
+    - "3.3"
+    - "4.1"
+    - "4.2"
+    - "4.3"
+    - "4.4"
+    - "5.1"
+    - "5.2"
+    - "5.3"
+    - "5.4"
+last_updated: "2026-08-23"
