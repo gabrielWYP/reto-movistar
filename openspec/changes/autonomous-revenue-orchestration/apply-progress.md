@@ -4,8 +4,8 @@
 
 - Mode: Strict TDD; delivery: Feature Branch Chain.
 - Completed: 1.1-3.2 (10/21); remaining: task 3.3, gates 0.1-0.2, and tasks 4.1-5.4.
-- Current branch: `feature/autonomous-revenue-orchestration-05-storage-hardening`.
-- Intended base: `feature/autonomous-revenue-orchestration-04-runner-recovery`.
+- Current branch: `feature/autonomous-revenue-orchestration-06-review-package`.
+- Intended base: `feature/autonomous-revenue-orchestration-05-storage-hardening`.
 
 ## TDD Cycle Evidence
 
