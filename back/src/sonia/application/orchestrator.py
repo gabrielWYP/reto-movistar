@@ -6,6 +6,7 @@ import json
 import logging
 import sqlite3
 import time
+from collections.abc import Callable
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
@@ -57,10 +58,12 @@ class RunOrchestrator:
         *,
         owner: str,
         lease_seconds: float = 30.0,
+        storage_guard: Callable[[], None] | None = None,
     ) -> None:
         self.database, self.intake = database.resolve(), intake
         self.adapters, self.judge = adapters, judge
         self.owner, self.lease_seconds = owner, lease_seconds
+        self.storage_guard = storage_guard
         if not self.database.is_file():
             raise RuntimeError("Durable run storage unavailable")
         with self._connect() as connection:
@@ -98,6 +101,10 @@ class RunOrchestrator:
         with self._connect() as connection:
             return self._load(connection, run_id)
 
+    def _guard_storage(self) -> None:
+        if self.storage_guard:
+            self.storage_guard()
+
     def create_run(self, dataset: str, ruleset: str, key: str) -> RevenueAnalysisRun:
         """Create a stable run only for compatible execution-ready revisions."""
         digest = self._digest("create", dataset, ruleset)
@@ -130,6 +137,7 @@ class RunOrchestrator:
 
     def start(self, run_id: str, key: str) -> RevenueAnalysisRun:
         """Idempotently make Billing the only eligible first specialist."""
+        self._guard_storage()
         digest = self._digest("start", run_id)
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -167,6 +175,7 @@ class RunOrchestrator:
 
     def advance(self, run_id: str, expected: RunState, key: str) -> RevenueAnalysisRun:
         """Execute exactly one leased specialist or Judge step and commit atomically."""
+        self._guard_storage()
         digest = self._digest("advance", run_id, expected)
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
