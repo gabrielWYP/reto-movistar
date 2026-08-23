@@ -18,6 +18,8 @@ from collections_agent.application import CollectionsBackend
 from collections_agent.service import CollectionsService
 from collections_agent.uploads import load_uploaded_csvs
 
+from sonia.persistence.sqlite import SQLiteIntakeRepository
+
 MAX_DATASET_BYTES = 25 * 1024 * 1024
 MAX_DATASET_FILES = 6
 SUPERVISOR_SOURCE = "supervisor"
@@ -33,10 +35,12 @@ class SupervisorDatasetCoordinator:
         bi_backend: BIBackend,
         collections_backend: CollectionsBackend,
         billing_registry: DatasetRegistry,
+        intake_repository: SQLiteIntakeRepository | None = None,
     ) -> None:
         self._bi = bi_backend
         self._collections = collections_backend
         self._billing = billing_registry
+        self._intake = intake_repository
         self._lock = RLock()
 
     def _billing_status(self) -> dict[str, Any]:
@@ -87,7 +91,12 @@ class SupervisorDatasetCoordinator:
             "agents": agents,
         }
 
-    def publish(self, files: dict[str, bytes]) -> dict[str, Any]:
+    def publish(
+        self,
+        files: dict[str, bytes],
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
         """Validate the complete six-file contract before changing any agent."""
         normalized = normalize_dataset_files(files)
         missing = missing_dataset_files(normalized)
@@ -118,6 +127,12 @@ class SupervisorDatasetCoordinator:
             missing_detail = f" Faltan: {', '.join(error.missing)}." if error.missing else ""
             raise ValueError(f"{error}{missing_detail}") from error
 
+        revision = None
+        if self._intake is not None:
+            if not idempotency_key:
+                raise ValueError("An idempotency key is required for durable publication")
+            revision = self._intake.publish_dataset(normalized, idempotency_key)
+
         with self._lock:
             self._bi.publish_dataset(bi_service, normalized, source=SUPERVISOR_SOURCE)
             self._collections.publish_dataset(
@@ -127,6 +142,8 @@ class SupervisorDatasetCoordinator:
             self._billing.publish_default(billing_service, origin=SUPERVISOR_ORIGIN)
 
         result = self.status()
+        if revision is not None:
+            result["dataset_revision"] = revision.revision_id
         result["warnings"] = report.warnings
         logger.info(
             "supervisor_dataset_published",
