@@ -31,8 +31,8 @@ Selected Feature Branch Chain: app1 targets a draft tracker; each later app PR t
 
 ## Phase 1: Domain and Intake
 
-- [ ] 1.1 RED: add `back/tests/unit/test_orchestration_domain.py` for immutable contracts and out-of-order rejection (Runs/Fixed sequence).
-- [ ] 1.2 GREEN: create `domain/orchestration.py`, `persistence/repository.py`; REFACTOR invariants/docs.
+- [x] 1.1 RED: add `back/tests/unit/test_orchestration_domain.py` for immutable contracts and out-of-order rejection (Runs/Fixed sequence).
+- [x] 1.2 GREEN: create `domain/orchestration.py`, `persistence/repository.py`; REFACTOR invariants/docs.
 - [ ] 1.3 RED: add `back/tests/integration/test_sqlite_intake.py` for all Rule Intake scenarios.
 - [ ] 1.4 GREEN: implement `persistence/sqlite.py`, durable `application/dataset_supervisor.py`, config, atomic files, profiles/rulesets; REFACTOR transactions/docs.
 
