@@ -3,9 +3,9 @@
 ## Cumulative Status
 
 - Mode: Strict TDD; delivery: Feature Branch Chain.
-- Completed: 1.1-2.4 (8/21); remaining: gates 0.1-0.2 and tasks 3.1-5.4.
-- Current branch: `feature/autonomous-revenue-orchestration-03-judge-adapters`.
-- Intended base: `feature/autonomous-revenue-orchestration-02-intake`.
+- Completed: 1.1-3.2 (10/21); remaining: gates 0.1-0.2 and tasks 3.3-5.4.
+- Current branch: `feature/autonomous-revenue-orchestration-04-runner-recovery`.
+- Intended base: `feature/autonomous-revenue-orchestration-03-judge-adapters`.
 
 ## TDD Cycle Evidence
 
@@ -14,6 +14,7 @@
 | 1.1-1.2 | `/home/linuxbrew/.linuxbrew/bin/python3 -m pytest tests/unit/test_orchestration_domain.py`: collection failed, missing `sonia.domain.orchestration` | `.venv-py312/bin/python -m pytest back/tests/unit/test_orchestration_domain.py`: 6 passed | Happy fixed sequence plus early Collections, non-PASS, attempt, immutability, telemetry, and port cases | Extracted frozen base and transition tables; 6 passed |
 | 1.3-1.4 | Initial collection failed without `sqlite`; correction RED: delete command left 1 failed/4 passed | Focused GREEN: 5 passed | Valid/incomplete, replay/conflict, typed/required/revised rules, issue/delete effects | Reopened SQLite from `tmp_path`; 5 passed |
 | 2.1-2.4 | Collection failed without modules; lineage correction: 1 failed/1 passed | GREEN: 5 passed; lineage correction: 2 passed | PASS/hard failure, retry/manual, fallback, history, bound run/attempt/tool evidence | Simplified evidence normalization; focused green |
+| 3.1-3.2 | Missing module; correction RED: retry-then-pass exceeded bound 8 | GREEN: 4 passed; correction passed with bound 13 | Replays/conflicts, sequence, restart, owners, retry/pass, retry/manual, storage loss | Compact transactional runner; focused green |
 
 ## Work Unit Evidence
 
@@ -26,6 +27,7 @@
 | Rollback | Remove the three new Python files and revert only task checkboxes 1.1-1.2. |
 | B/app2 | Focused/runtime: real SQLite + temporary filesystem, 5 passed; combined Supervisor regression: 9 passed; Ruff/format/Mypy/diff passed. Rollback: remove `sqlite.py` and its test, revert the optional coordinator dependency and tasks 1.3-1.4. |
 | C/app3 | Combined: 11 passed. Runtime `.venv-py312/bin/python -c '<fixture six-CSV adapter harness>'` loaded real services with `back/tests/fixtures/supervisor`: `[('billing', 'REQUIERE_VALIDACION', 3, 'billing_health_snapshot'), ('collections', 'RESULT_AVAILABLE', 6, 'portfolio_snapshot'), ('bi', 'RESULT_AVAILABLE', 9, 'executive_snapshot')]`. Ruff/format/Mypy/diff passed. Rollback: remove Judge/adapters/tests, revert JudgeDecision metadata/time and tasks 2.1-2.4. |
+| D/app4 | Focused: 4 passed in 2.18s; combined regression: 20 passed in 2.58s. Runtime restart/competing-owner harness: 1 passed in 1.20s. Ruff/format/Mypy/diff passed. Rollback: remove `orchestrator.py` and its integration test; revert tasks 3.1-3.2. Task 3.3 remains pending as a complete child slice. |
 
 ## Work Unit A/app1
 
@@ -39,3 +41,4 @@ Files changed: `back/src/sonia/domain/orchestration.py`,
 
 Work Unit B/app2 ends with durable, checksummed dataset/profile/question/ruleset intake; API wiring and orchestration remain deferred.
 Work Unit C/app3 ends with deterministic-first Judge gates and fixed in-process specialist adapters; runner persistence remains deferred.
+Work Unit D/app4 ends with durable digest-bound run sequencing, bounded retries, recovery, and expiring single-owner leases; backup/quarantine/package assembly remains deferred to 3.3.
