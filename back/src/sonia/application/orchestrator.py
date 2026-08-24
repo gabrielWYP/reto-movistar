@@ -22,6 +22,7 @@ from sonia.domain.orchestration import (
     SpecialistPhase,
     SpecialistResult,
 )
+from sonia.persistence.backup import Artifact, PackageLineageError, StorageHardener
 from sonia.persistence.sqlite import SQLiteIntakeRepository
 
 _LOG = logging.getLogger(__name__)
@@ -59,11 +60,15 @@ class RunOrchestrator:
         owner: str,
         lease_seconds: float = 30.0,
         storage_guard: Callable[[], None] | None = None,
+        auto_package: bool = True,
     ) -> None:
         self.database, self.intake = database.resolve(), intake
         self.adapters, self.judge = adapters, judge
         self.owner, self.lease_seconds = owner, lease_seconds
         self.storage_guard = storage_guard
+        self.package_storage = (
+            StorageHardener(self.database.parent.parent) if auto_package else None
+        )
         if not self.database.is_file():
             raise RuntimeError("Durable run storage unavailable")
         with self._connect() as connection:
@@ -240,6 +245,9 @@ class RunOrchestrator:
                 "recovery": run.version > 1,
             },
         )
+        if advanced.state in (RunState.COMPLETED, RunState.MANUAL_REVIEW):
+            if self.package_storage:
+                self.assemble_review_package(run_id, self.package_storage)
         return advanced
 
     def run(self, run_id: str, key_prefix: str, *, max_steps: int = 13) -> RevenueAnalysisRun:
@@ -247,6 +255,8 @@ class RunOrchestrator:
         for _ in range(max_steps):
             current = self.get_run(run_id)
             if current.state in (RunState.COMPLETED, RunState.MANUAL_REVIEW):
+                if self.package_storage and not current.manual_reason:
+                    self.assemble_review_package(run_id, self.package_storage)
                 return current
             if current.state is RunState.CREATED:
                 self.start(run_id, f"{key_prefix}:{current.version}")
@@ -261,3 +271,26 @@ class RunOrchestrator:
                 "SELECT phase, kind FROM run_steps WHERE run_id = ? ORDER BY seq", (run_id,)
             ).fetchall()
         return tuple(row["phase"] + (":judge" if row["kind"] == "judge" else "") for row in rows)
+
+    def assemble_review_package(self, run_id: str, storage: StorageHardener) -> Artifact:
+        """Assemble terminal evidence or durably escalate incomplete completed lineage."""
+        try:
+            return storage.assemble_package(run_id)
+        except PackageLineageError as error:
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                run = self._load(connection, run_id)
+                if run.state is RunState.COMPLETED or not run.manual_reason:
+                    escalated = run.model_copy(
+                        update={
+                            "state": RunState.MANUAL_REVIEW,
+                            "version": run.version + 1,
+                            "manual_reason": run.manual_reason or error.missing,
+                        }
+                    )
+                    connection.execute(_UPDATE, (escalated.model_dump_json(), run_id))
+            _LOG.warning(
+                "run_package_lineage_failed",
+                extra={"run_id": run_id, "missing_lineage": error.missing},
+            )
+            raise

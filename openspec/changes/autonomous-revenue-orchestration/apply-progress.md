@@ -3,7 +3,7 @@
 ## Cumulative Status
 
 - Mode: Strict TDD; delivery: Feature Branch Chain.
-- Completed: 1.1-3.2 (10/21); remaining: task 3.3, gates 0.1-0.2, and tasks 4.1-5.4.
+- Completed: 1.1-3.3 (11/21); remaining: gates 0.1-0.2 and tasks 4.1-5.4.
 - Current branch: `feature/autonomous-revenue-orchestration-06-review-package`.
 - Intended base: `feature/autonomous-revenue-orchestration-05-storage-hardening`.
 
@@ -15,7 +15,7 @@
 | 1.3-1.4 | Initial collection failed without `sqlite`; correction RED: delete command left 1 failed/4 passed | Focused GREEN: 5 passed | Valid/incomplete, replay/conflict, typed/required/revised rules, issue/delete effects | Reopened SQLite from `tmp_path`; 5 passed |
 | 2.1-2.4 | Collection failed without modules; lineage correction: 1 failed/1 passed | GREEN: 5 passed; lineage correction: 2 passed | PASS/hard failure, retry/manual, fallback, history, bound run/attempt/tool evidence | Simplified evidence normalization; focused green |
 | 3.1-3.2 | Missing module; correction RED: retry-then-pass exceeded bound 8 | GREEN: 4 passed; correction passed with bound 13 | Replays/conflicts, sequence, restart, owners, retry/pass, retry/manual, storage loss | Compact transactional runner; focused green |
-| 3.3 partial | Missing module; correction RED: start/symlink/package retry produced 5 failures | Backup/readiness GREEN: 5 passed in 2.06s; package deferred | Backup/restore/tamper, missing/corrupt/escape start freeze, symlink/orphan quarantine | Real production format made full slice 488/400; split required |
+| 3.3 | Missing symbols; correction REDs covered backup/reason, terminal auto-package, reopen and repeated-direct version drift | Storage 6 passed; package 5 passed in 1.98s | Exact backup, corrupt freeze, durable reason/version idempotency, automatic terminal packages, explicit corruption harness | Formatted split; combined 21 passed |
 
 ## Work Unit Evidence
 
@@ -30,6 +30,7 @@
 | C/app3 | Combined: 11 passed. Runtime `.venv-py312/bin/python -c '<fixture six-CSV adapter harness>'` loaded real services with `back/tests/fixtures/supervisor`: `[('billing', 'REQUIERE_VALIDACION', 3, 'billing_health_snapshot'), ('collections', 'RESULT_AVAILABLE', 6, 'portfolio_snapshot'), ('bi', 'RESULT_AVAILABLE', 9, 'executive_snapshot')]`. Ruff/format/Mypy/diff passed. Rollback: remove Judge/adapters/tests, revert JudgeDecision metadata/time and tasks 2.1-2.4. |
 | D/app4 | Focused: 4 passed in 2.18s; combined regression: 20 passed in 2.58s. Runtime restart/competing-owner harness: 1 passed in 1.20s. Ruff/format/Mypy/diff passed. Rollback: remove `orchestrator.py` and its integration test; revert tasks 3.1-3.2. Task 3.3 remains pending as a complete child slice. |
 | E/app5-storage partial | Focused 5 passed in 2.06s; combined 25 passed in 3.74s; runtime backup→restore + corruption/start freeze 2 passed in 1.44s. Ruff/format/Mypy/diff passed. Rollback: remove `backup.py`, test and runner guard; task 3.3 stays open. |
+| F/app6-package | Focused 5 passed in 1.98s; combined 21 passed in 3.42s. Runtime autonomous completed+manual packages: 2 passed in 1.34s. Ruff/format/Mypy/diff passed. Rollback: remove package validator/assembler, auto-trigger/escalation/manual reason and package test; reopen 3.3. |
 
 ## Work Unit A/app1
 
@@ -45,3 +46,4 @@ Work Unit B/app2 ends with durable, checksummed dataset/profile/question/ruleset
 Work Unit C/app3 ends with deterministic-first Judge gates and fixed in-process specialist adapters; runner persistence remains deferred.
 Work Unit D/app4 ends with durable digest-bound run sequencing, bounded retries, recovery, and expiring single-owner leases; backup/quarantine/package assembly remains deferred to 3.3.
 Work Unit E/app5-storage is partial: verified backup/restore, fail-closed start/advance readiness, and symlink-aware orphan quarantine; package assembly moves to a bounded child slice and 3.3 remains open.
+Work Unit F/app6-package closes 3.3 with checksummed completed/manual packages and fail-closed lineage escalation; analyst decisions remain deferred.

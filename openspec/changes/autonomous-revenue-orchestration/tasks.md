@@ -47,7 +47,7 @@ Selected Feature Branch Chain: app1 targets a draft tracker; each later app PR t
 
 - [x] 3.1 RED: add `back/tests/integration/test_run_recovery.py` for all Runs recovery/idempotency/ownership scenarios.
 - [x] 3.2 GREEN: implement `application/orchestrator.py`: leases, digests, transitions, resume, background runner.
-- [ ] 3.3 REFACTOR: add `persistence/backup.py`, quarantine/readiness freeze, package assembly, corruption/lineage tests/docs.
+- [x] 3.3 REFACTOR: add `persistence/backup.py`, quarantine/readiness freeze, package assembly, corruption/lineage tests/docs.
 
 ## Phase 4: API, UI, Review
 
