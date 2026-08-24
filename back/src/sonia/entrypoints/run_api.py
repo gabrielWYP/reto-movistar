@@ -8,22 +8,38 @@ import re
 import sqlite3
 from datetime import UTC, datetime
 from hashlib import sha256
+from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from fastapi import APIRouter, BackgroundTasks, File, Header, HTTPException, UploadFile
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
+from sonia.application.dataset_supervisor import (
+    MAX_DATASET_BYTES,
+    MAX_DATASET_FILES,
+    SupervisorDatasetCoordinator,
+)
 from sonia.application.orchestrator import RunOrchestrator
 from sonia.persistence.backup import StorageHardener
 
 _LOG = logging.getLogger(__name__)
 _IDENTITY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@+-]{0,127}")
-IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)]
 _REVIEW_SCHEMA = (
     "CREATE TABLE IF NOT EXISTS review_decisions("
     "idempotency_key TEXT PRIMARY KEY,request_digest TEXT NOT NULL,"
     "package_revision TEXT UNIQUE NOT NULL,payload TEXT NOT NULL)"
 )
+
+
+def _non_blank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("Value cannot be whitespace-only")
+    return value.strip()
+
+
+IdempotencyKey = Annotated[
+    str, Header(alias="Idempotency-Key", min_length=1, max_length=128), AfterValidator(_non_blank)
+]
 
 
 class _Immutable(BaseModel):
@@ -39,6 +55,13 @@ class RunCreate(_Immutable):
     ruleset_revision: str = Field(min_length=1)
 
 
+class RulesetCreate(_Immutable):
+    """Answers bound to one immutable Supervisor dataset."""
+
+    dataset_revision: str = Field(min_length=1)
+    answers: dict[str, str]
+
+
 class ReviewRequest(_Immutable):
     """One decision against an exact immutable package revision."""
 
@@ -50,7 +73,11 @@ class ReviewRequest(_Immutable):
     @model_validator(mode="after")
     def require_rejection_reason(self) -> ReviewRequest:
         """Reject packages only with an auditable bounded reason."""
-        if self.outcome == "reject" and not self.reason:
+        if self.reason is not None and not self.reason.strip():
+            raise ValueError("Reason cannot be whitespace-only")
+        if self.annotation is not None and not self.annotation.strip():
+            raise ValueError("Annotation cannot be whitespace-only")
+        if self.outcome == "reject" and self.reason is None:
             raise ValueError("A reason is required when rejecting a package")
         return self
 
@@ -136,6 +163,17 @@ class _ReviewStore:
         )
         return decision
 
+    def get(self, package_revision: str) -> ReviewDecision:
+        """Read the sole committed decision for an immutable package."""
+        with sqlite3.connect(self.database) as connection:
+            row = connection.execute(
+                "SELECT payload FROM review_decisions WHERE package_revision=?",
+                (package_revision,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(package_revision)
+        return ReviewDecision.model_validate_json(row[0])
+
 
 def _analyst(value: str | None) -> str:
     if value is None or not _IDENTITY.fullmatch(value.strip()):
@@ -157,19 +195,79 @@ def _package(storage: StorageHardener, run_id: str) -> dict[str, object]:
         raise HTTPException(status_code=status, detail=str(error)) from error
 
 
-def create_run_router(runner: RunOrchestrator, storage: StorageHardener) -> APIRouter:
+async def read_dataset_uploads(
+    files: Annotated[list[UploadFile], File(...)],
+) -> dict[str, bytes]:
+    """Read one bounded data-only Supervisor publication."""
+    if not files or len(files) > MAX_DATASET_FILES:
+        raise HTTPException(
+            status_code=422, detail="Carga un ZIP o las seis fuentes CSV oficiales."
+        )
+    payload: dict[str, bytes] = {}
+    request_bytes = 0
+    for upload in files:
+        raw_name = upload.filename or ""
+        candidate = Path(raw_name.replace("\\", "/"))
+        if candidate.is_absolute() or ".." in candidate.parts or len(candidate.parts) != 1:
+            raise HTTPException(status_code=422, detail="La ruta del archivo no está permitida.")
+        filename = candidate.name
+        if not filename or Path(filename).suffix.lower() not in {".csv", ".zip"}:
+            raise HTTPException(status_code=422, detail="Solo se aceptan archivos CSV o ZIP.")
+        if filename in payload:
+            raise HTTPException(status_code=422, detail=f"Archivo duplicado: {filename}.")
+        chunks: list[bytes] = []
+        while chunk := await upload.read(1024 * 1024):
+            request_bytes += len(chunk)
+            if request_bytes > MAX_DATASET_BYTES:
+                raise HTTPException(status_code=413, detail="La carga excede 25 MiB.")
+            chunks.append(chunk)
+        payload[filename] = b"".join(chunks)
+    return payload
+
+
+def create_run_router(
+    runner: RunOrchestrator,
+    storage: StorageHardener,
+    datasets: SupervisorDatasetCoordinator,
+) -> APIRouter:
     """Create revision-bound run and immutable final-review routes."""
-    router = APIRouter(prefix="/api/supervisor/runs", tags=["revenue-runs"])
+    router = APIRouter(prefix="/api/supervisor", tags=["revenue-runs"])
     reviews = _ReviewStore(runner)
 
-    @router.post("", status_code=201)
+    @router.post("/datasets", status_code=201, tags=["supervisor-intake"])
+    async def publish_dataset(
+        files: Annotated[list[UploadFile], File(...)], key: IdempotencyKey
+    ) -> object:
+        try:
+            return datasets.publish(await read_dataset_uploads(files), idempotency_key=key)
+        except ValueError as error:
+            status = 409 if "Conflicting idempotency" in str(error) else 422
+            raise HTTPException(status_code=status, detail=str(error)) from error
+
+    @router.get("/datasets/{revision}/questions", tags=["supervisor-intake"])
+    def questions(revision: str) -> object:
+        try:
+            return runner.intake.questions(revision)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Dataset revision not found") from error
+
+    @router.post("/rulesets", status_code=201, tags=["supervisor-intake"])
+    def create_ruleset(request: RulesetCreate) -> object:
+        try:
+            return runner.intake.create_ruleset(request.dataset_revision, request.answers)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Dataset revision not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @router.post("/runs", status_code=201)
     def create(request: RunCreate, key: IdempotencyKey) -> object:
         try:
             return runner.create_run(request.dataset_revision, request.ruleset_revision, key)
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
-    @router.post("/{run_id}/start", status_code=202)
+    @router.post("/runs/{run_id}/start", status_code=202)
     def start(run_id: str, background: BackgroundTasks, key: IdempotencyKey) -> object:
         try:
             started = runner.start(run_id, key)
@@ -182,14 +280,14 @@ def create_run_router(runner: RunOrchestrator, storage: StorageHardener) -> APIR
         background.add_task(runner.run, run_id, f"background:{key}")
         return started
 
-    @router.get("/{run_id}")
+    @router.get("/runs/{run_id}")
     def poll(run_id: str) -> object:
         try:
             return runner.get_run(run_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Run not found") from error
 
-    @router.get("/{run_id}/history")
+    @router.get("/runs/{run_id}/history")
     def history(run_id: str) -> dict[str, object]:
         try:
             runner.get_run(run_id)
@@ -197,11 +295,26 @@ def create_run_router(runner: RunOrchestrator, storage: StorageHardener) -> APIR
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Run not found") from error
 
-    @router.get("/{run_id}/package")
+    @router.get("/runs/{run_id}/evidence")
+    def evidence(run_id: str) -> dict[str, object]:
+        try:
+            return {"run_id": run_id, "evidence": runner.evidence(run_id)}
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Run not found") from error
+
+    @router.get("/runs/{run_id}/package")
     def package(run_id: str) -> dict[str, object]:
         return _package(storage, run_id)
 
-    @router.post("/{run_id}/review")
+    @router.get("/runs/{run_id}/review")
+    def review_decision(run_id: str) -> ReviewDecision:
+        package_revision = _package(storage, run_id)["package_revision"]
+        try:
+            return reviews.get(str(package_revision))
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Review decision not found") from error
+
+    @router.post("/runs/{run_id}/review")
     def review(
         run_id: str,
         request: ReviewRequest,
