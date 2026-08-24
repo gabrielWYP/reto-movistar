@@ -17,6 +17,7 @@ class Settings:
     port: int
     log_level: str
     frontend_dir: Path
+    storage_root: Path | None = None
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -24,15 +25,18 @@ class Settings:
         port = int(os.getenv("SONIA_PORT", "8080"))
         if not 1 <= port <= 65535:
             raise ValueError("SONIA_PORT must be between 1 and 65535")
+        environment = os.getenv("SONIA_ENVIRONMENT", "development")
+        default_storage = "/var/lib/sonia" if environment == "production" else "/tmp/sonia"
 
         return cls(
             app_name=os.getenv("SONIA_APP_NAME", "SON-IA"),
             app_version=os.getenv("SONIA_APP_VERSION", "0.1.0"),
-            environment=os.getenv("SONIA_ENVIRONMENT", "development"),
+            environment=environment,
             host=os.getenv("SONIA_HOST", "0.0.0.0"),
             port=port,
             log_level=os.getenv("SONIA_LOG_LEVEL", "INFO").upper(),
             frontend_dir=Path(os.getenv("SONIA_FRONTEND_DIR", "front")).resolve(),
+            storage_root=Path(os.getenv("SONIA_STORAGE_ROOT", default_storage)).resolve(),
         )
 
 
