@@ -10,7 +10,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN groupadd --gid 1001 sonia \
-    && useradd --uid 1001 --gid sonia --no-create-home --shell /usr/sbin/nologin sonia
+    && useradd --uid 1001 --gid sonia --no-create-home --shell /usr/sbin/nologin sonia \
+    && install -d -o 1001 -g 1001 /var/lib/sonia
 
 COPY back/pyproject.toml back/README.md LICENSE ./
 COPY back/src ./src
