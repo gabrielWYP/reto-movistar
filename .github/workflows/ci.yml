@@ -141,6 +141,7 @@ jobs:
           container_id="$(docker run --detach --rm \
             --read-only \
             --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --tmpfs /var/lib/sonia:rw,noexec,nosuid,size=128m,uid=1001,gid=1001,mode=0700 \
             --publish 127.0.0.1:18080:8080 \
             sonia-movistar:ci)"
           trap 'docker stop "${container_id}" >/dev/null 2>&1 || true' EXIT
@@ -151,6 +152,9 @@ jobs:
           python -c \
             'import json,sys; payload=json.loads(sys.argv[1]); assert payload["status"] == "ok"' \
             "${response}"
+
+          curl --fail --silent --show-error \
+            http://127.0.0.1:18080/ready
 
           curl --fail --silent --show-error \
             http://127.0.0.1:18080/ \

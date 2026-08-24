@@ -13,6 +13,14 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from sonia.domain.orchestration import (
+    JudgeDecision,
+    JudgeVerdict,
+    RevenueAnalysisRun,
+    RunState,
+    SpecialistPhase,
+    SpecialistResult,
+)
 from sonia.persistence.sqlite import DatasetRevision
 
 _LOG = logging.getLogger(__name__)
@@ -20,7 +28,7 @@ _LOG = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Artifact:
-    """Path and digest for one immutable manifest."""
+    """Path and digest for one immutable manifest or package."""
 
     path: Path
     sha256: str
@@ -33,6 +41,14 @@ class Readiness:
     ready: bool
     issues: tuple[str, ...]
     quarantined: tuple[Path, ...]
+
+
+class PackageLineageError(RuntimeError):
+    """Identify the required lineage that prevents a review-ready package."""
+
+    def __init__(self, missing: str) -> None:
+        self.missing = missing
+        super().__init__(f"Missing package lineage: {missing}")
 
 
 def _canonical(value: object) -> bytes:
@@ -80,6 +96,82 @@ def _read_envelope(path: Path, label: str) -> dict[str, Any]:
         return payload
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise RuntimeError(f"Invalid or corrupt {label}") from error
+
+
+def _package_history(
+    rows: list[tuple[str, str, int, str]], run: RevenueAnalysisRun
+) -> tuple[list[dict[str, Any]], JudgeDecision]:
+    phases, phase_index, expected_attempt = tuple(SpecialistPhase), 0, 1
+    pending: SpecialistResult | None = None
+    approved: set[str] = set()
+    history: list[dict[str, Any]] = []
+    terminal: JudgeDecision | None = None
+    for index, (kind, phase_text, attempt, raw) in enumerate(rows):
+        phase = phases[min(phase_index, len(phases) - 1)]
+        if kind == "specialist":
+            if pending is not None:
+                raise PackageLineageError(f"{phase} verdict")
+            try:
+                result = SpecialistResult.model_validate_json(raw)
+            except ValueError as error:
+                raise PackageLineageError(f"{phase} output") from error
+            if result.phase is not phase or phase_text != phase or result.attempt != attempt:
+                raise PackageLineageError(f"{phase} output")
+            evidence = {item.evidence_id for item in result.evidence_refs}
+            required = {f"dataset:{run.dataset_revision}", f"ruleset:{run.ruleset_revision}"}
+            output = f"{run.run_id}:{phase}:attempt={attempt}:"
+            findings = all(set(item.evidence_refs) <= evidence for item in result.findings)
+            if not required <= evidence or not any(item.startswith(output) for item in evidence):
+                raise PackageLineageError(f"{phase} evidence")
+            if not approved <= evidence or not findings:
+                raise PackageLineageError(f"{phase} cross-phase evidence")
+            if attempt != expected_attempt:
+                raise PackageLineageError(f"{phase} attempt")
+            pending = result
+        elif kind == "judge":
+            if pending is None:
+                raise PackageLineageError(f"{phase_text} output")
+            try:
+                decision = JudgeDecision.model_validate_json(raw)
+            except ValueError as error:
+                raise PackageLineageError(f"{phase} verdict") from error
+            evidence = {item.evidence_id for item in pending.evidence_refs}
+            if decision.phase is not phase or phase_text != phase or decision.attempt != attempt:
+                raise PackageLineageError(f"{phase} verdict")
+            if not evidence <= set(decision.evidence_refs):
+                raise PackageLineageError(f"{phase} judge evidence")
+            if decision.verdict is JudgeVerdict.RETRY and attempt == 1:
+                expected_attempt = 2
+            elif decision.verdict is JudgeVerdict.PASS:
+                approved, expected_attempt, phase_index = evidence, 1, phase_index + 1
+            elif decision.verdict is JudgeVerdict.MANUAL_REVIEW and index == len(rows) - 1:
+                terminal = decision
+            else:
+                raise PackageLineageError(f"{phase} verdict sequence")
+            pending = None
+            terminal = decision
+        else:
+            raise PackageLineageError(f"{phase_text} output kind")
+        history.append(
+            {
+                "kind": kind,
+                "phase": phase_text,
+                "attempt": attempt,
+                "sha256": sha256(raw.encode()).hexdigest(),
+                "content": json.loads(raw),
+            }
+        )
+    if pending is not None:
+        raise PackageLineageError(f"{pending.phase} verdict")
+    if terminal is None:
+        raise PackageLineageError("terminal verdict")
+    if run.state is RunState.COMPLETED and (
+        phase_index != len(phases) or terminal.verdict is not JudgeVerdict.PASS
+    ):
+        raise PackageLineageError("completed phase verdicts")
+    if run.state is RunState.MANUAL_REVIEW and terminal.verdict is not JudgeVerdict.MANUAL_REVIEW:
+        raise PackageLineageError("manual-review blocking verdict")
+    return history, terminal
 
 
 class StorageHardener:
@@ -148,6 +240,15 @@ class StorageHardener:
                     }
                     _atomic(target.with_suffix(".audit.json"), _canonical(audit))
                     quarantined.append(target)
+        package_root = self.root / "packages"
+        if package_root.exists():
+            for package in package_root.glob("*.json"):
+                try:
+                    if package.is_symlink():
+                        raise RuntimeError
+                    _read_envelope(package, "package")
+                except RuntimeError:
+                    issues.append(f"Invalid package envelope: {package.name}")
         outcome = Readiness(not issues, tuple(issues), tuple(quarantined))
         _LOG.info(
             "storage_readiness",
@@ -187,6 +288,15 @@ class StorageHardener:
                 if _digest(target) != item.sha256:
                     raise RuntimeError("Backup dataset verification failed")
                 files.append({"path": str(relative), "sha256": item.sha256})
+        package_root = self.root / "packages"
+        for source in package_root.glob("*.json") if package_root.exists() else ():
+            relative = source.relative_to(self.root)
+            target = self._safe(destination, relative)
+            checksum = _digest(source)
+            _atomic(target, source.read_bytes())
+            if _digest(target) != checksum:
+                raise RuntimeError("Backup package verification failed")
+            files.append({"path": str(relative), "sha256": checksum})
         payload = {
             "version": 1,
             "database": {"path": "db/sonia.sqlite3", "sha256": _digest(target_database)},
@@ -228,3 +338,50 @@ class StorageHardener:
         hardener.require_ready()
         _LOG.info("storage_restore", extra={"files": len(entries), "outcome": "verified"})
         return hardener
+
+    def assemble_package(self, run_id: str) -> Artifact:
+        """Write one immutable checksummed completed or manual-review package."""
+        self.require_ready()
+        with sqlite3.connect(self.database) as connection:
+            run_row = connection.execute(
+                "SELECT payload FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            rows = connection.execute(
+                "SELECT kind, phase, attempt, payload FROM run_steps WHERE run_id = ? ORDER BY seq",
+                (run_id,),
+            ).fetchall()
+        if run_row is None:
+            raise KeyError(run_id)
+        run = RevenueAnalysisRun.model_validate_json(run_row[0])
+        if run.state not in (RunState.COMPLETED, RunState.MANUAL_REVIEW):
+            raise RuntimeError("Run is not package-ready")
+        history, terminal = _package_history(rows, run)
+        payload: dict[str, Any] = {
+            "run_id": run.run_id,
+            "state": run.state,
+            "review_ready": True,
+            "dataset_revision": run.dataset_revision,
+            "ruleset_revision": run.ruleset_revision,
+            "history": history,
+        }
+        if run.state is RunState.MANUAL_REVIEW:
+            next_phase = {"billing": "collections", "collections": "bi", "bi": "completion"}
+            failed = terminal.hard_checks + terminal.rubric
+            payload |= {
+                "blocking_verdict": terminal.verdict,
+                "blocked_phase": terminal.phase,
+                "prevented_phase": next_phase[terminal.phase],
+                "unresolved_checks": [item.name for item in failed if not item.passed],
+            }
+        target = self._safe(self.root, Path("packages") / f"{run_id}.json")
+        content = _envelope(payload)
+        if target.exists():
+            if _read_envelope(target, "package") != payload:
+                raise RuntimeError("Immutable package content changed")
+        else:
+            _atomic(target, content)
+        _LOG.info(
+            "storage_package",
+            extra={"run_id": run_id, "state": run.state, "steps": len(history)},
+        )
+        return Artifact(target, _digest(target))

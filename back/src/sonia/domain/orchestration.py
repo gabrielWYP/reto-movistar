@@ -161,6 +161,7 @@ class RevenueAnalysisRun(ImmutableModel):
     ruleset_revision: str = Field(min_length=1)
     state: RunState = RunState.CREATED
     version: int = Field(default=0, ge=0)
+    manual_reason: str | None = None
 
     def transition_to(
         self,
