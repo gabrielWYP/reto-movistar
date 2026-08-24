@@ -147,10 +147,15 @@ def test_full_run_records_complete_telemetry_and_revision_lineage(
 
     assert completed.state is RunState.COMPLETED
     evidence = runner.evidence(run_id)
-    assert [(item["phase"], item["kind"]) for item in evidence] == [
-        (phase, kind)
-        for phase in ("billing", "collections", "bi")
-        for kind in ("specialist", "judge")
+    assert [(item["phase"], item["kind"], item["attempt"]) for item in evidence] == [
+        ("billing", "specialist", 1),
+        ("billing", "judge", 1),
+        ("billing", "specialist", 2),
+        ("billing", "judge", 2),
+        ("collections", "specialist", 1),
+        ("collections", "judge", 1),
+        ("bi", "specialist", 1),
+        ("bi", "judge", 1),
     ]
     assert all(f"dataset:{dataset}" in json.dumps(item["content"]) for item in evidence)
     package = StorageHardener(tmp_path).assemble_package(run_id)
@@ -167,7 +172,7 @@ def test_full_run_records_complete_telemetry_and_revision_lineage(
         "lease",
         "recovery",
     }
-    assert len(records) == 6 and all(fields <= vars(record).keys() for record in records)
+    assert len(records) == 8 and all(fields <= vars(record).keys() for record in records)
     assert not any(record.recovery for record in records)
 
 

@@ -13,16 +13,26 @@ from sonia.domain.orchestration import (
 )
 
 
-def _result(*, attempt: int = 1, passed: bool = True, linked: bool = True) -> SpecialistResult:
+def _result(
+    *,
+    attempt: int = 1,
+    passed: bool = True,
+    linked: bool = True,
+    status: str = "READY",
+    output_sha: str = "a" * 64,
+) -> SpecialistResult:
+    output_id = f"run-1:billing:attempt={attempt}:snapshot:result"
     return SpecialistResult(
         phase=SpecialistPhase.BILLING,
         attempt=attempt,
-        status="READY",
+        status=status,
         validation_checks=(ValidationCheck(name="quality", passed=passed, detail="checked"),),
         findings=(
-            Finding(code="F1", summary="finding", evidence_refs=("ev-1" if linked else "missing",)),
+            Finding(
+                code="F1", summary="finding", evidence_refs=(output_id if linked else "missing",)
+            ),
         ),
-        evidence_refs=(EvidenceReference(evidence_id="ev-1", sha256="a" * 64),),
+        evidence_refs=(EvidenceReference(evidence_id=output_id, sha256=output_sha),),
         data_quality=(),
         recommended_actions=(),
         metadata=ExecutionMetadata(latency_ms=2, token_count=0),
@@ -57,6 +67,24 @@ def test_retry_is_bounded_and_history_is_append_only() -> None:
     assert first.corrective_constraints == ("quality: checked",)
     assert second.verdict is JudgeVerdict.MANUAL_REVIEW
     assert judge.history == (first, second)
+
+
+def test_validation_required_retries_once_and_requires_stable_digest() -> None:
+    first_result = _result(status="REQUIERE_VALIDACION")
+    first = Judge().evaluate(first_result)
+    stable = Judge().evaluate(
+        _result(attempt=2, status="REQUIERE_VALIDACION"), previous=first_result
+    )
+    changed = Judge().evaluate(
+        _result(attempt=2, status="REQUIERE_VALIDACION", output_sha="b" * 64),
+        previous=first_result,
+    )
+
+    assert first.verdict is JudgeVerdict.RETRY
+    assert stable.verdict is JudgeVerdict.PASS
+    assert changed.verdict is JudgeVerdict.MANUAL_REVIEW
+    confirmation = next(item for item in stable.hard_checks if item.name == "status_confirmation")
+    assert confirmation.detail == "stable normalized result digest"
 
 
 def test_provider_failure_uses_fail_safe_deterministic_fallback() -> None:
