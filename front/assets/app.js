@@ -1,11 +1,11 @@
 const STATE_ORDER = [
-  "VALIDATING",
-  "NEEDS_APPROVAL",
-  "ISSUED",
-  "PAYMENT_DETECTED",
-  "RECONCILING",
-  "ANALYZING",
-  "CLOSED",
+  "BILLING_RUNNING",
+  "BILLING_JUDGING",
+  "COLLECTIONS_RUNNING",
+  "COLLECTIONS_JUDGING",
+  "BI_RUNNING",
+  "BI_JUDGING",
+  "COMPLETED",
 ];
 
 const STATE_COPY = {
@@ -85,6 +85,10 @@ const appState = {
   selectedAgent: "billing",
   timeline: [],
   busy: false,
+  datasetRevision: null,
+  rulesetRevision: null,
+  runId: null,
+  packageRevision: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -308,12 +312,18 @@ async function publishDataset() {
   result.textContent = "La publicación será atómica: ningún agente cambia hasta validar todo.";
   result.className = "dataset-publish-result";
   try {
-    const response = await fetch("/api/supervisor/dataset", { method: "POST", body: form });
+    const response = await fetch("/api/supervisor/datasets", {
+      method: "POST",
+      headers: { "Idempotency-Key": operationKey("dataset") },
+      body: form,
+    });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || "El dataset no es compatible.");
-    renderDatasetStatus(payload);
-    result.textContent = "Dataset publicado. Los tres especialistas ya consumen esta fuente.";
+    appState.datasetRevision = payload.dataset_revision;
+    result.textContent = `Dataset ${payload.dataset_revision} publicado para los tres especialistas.`;
     result.className = "dataset-publish-result success";
+    await loadDatasetStatus();
+    await loadQuestions();
     showToast("Fuente compartida publicada por Supervisor.");
   } catch (error) {
     result.textContent = error.message || "No se pudo publicar el dataset.";
@@ -324,67 +334,144 @@ async function publishDataset() {
   }
 }
 
-async function performTransition() {
-  const copy = STATE_COPY[appState.currentState];
-  if (!copy.action || appState.busy) return;
-  appState.busy = true;
-  renderAction();
+const operationKey = (scope) => `${scope}-${crypto.randomUUID()}`;
 
+async function api(path, options = {}) {
+  const response = await fetch(path, options);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.detail || `Error HTTP ${response.status}`);
+  return payload;
+}
+
+async function loadQuestions() {
+  const questions = await api(
+    `/api/supervisor/datasets/${appState.datasetRevision}/questions`,
+  );
+  const container = byId("rule-questions");
+  container.replaceChildren();
+  questions.forEach((question) => {
+    const label = document.createElement("label");
+    label.textContent = `${question.target} · ${question.question_id}`;
+    const input = document.createElement("input");
+    input.name = question.question_id;
+    input.type = ["date", "number"].includes(question.answer_type)
+      ? question.answer_type
+      : "text";
+    input.required = question.mandatory !== false;
+    label.append(input);
+    container.append(label);
+  });
+  byId("rule-card").hidden = false;
+  byId("rules-form").hidden = false;
+}
+
+async function startRun(event) {
+  event.preventDefault();
+  setBusy(true);
   try {
-    const response = await fetch("/api/demo/transition", {
+    const answers = Object.fromEntries(new FormData(event.currentTarget));
+    const ruleset = await api("/api/supervisor/rulesets", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ current_state: appState.currentState, action: copy.action }),
+      body: JSON.stringify({ dataset_revision: appState.datasetRevision, answers }),
     });
-    if (!response.ok) throw new Error(`Transition failed with status ${response.status}`);
-    const result = await response.json();
-    appState.currentState = result.current_state;
-    appState.progress = result.progress;
-    appState.timeline.unshift(result.event);
-    const activeAgent = ["ANALYZING", "CLOSED"].includes(result.current_state)
-      ? "bi"
-      : ["ISSUED", "PAYMENT_DETECTED", "RECONCILING"].includes(result.current_state)
-        ? "collections"
-        : "billing";
-    appState.selectedAgent = activeAgent;
-    showToast(result.event.title);
+    appState.rulesetRevision = ruleset.revision_id;
+    const run = await api("/api/supervisor/runs", {
+      method: "POST",
+      headers: { "content-type": "application/json", "Idempotency-Key": operationKey("run") },
+      body: JSON.stringify({
+        dataset_revision: appState.datasetRevision,
+        ruleset_revision: appState.rulesetRevision,
+      }),
+    });
+    appState.runId = run.run_id;
+    byId("hero-case-id").textContent = appState.runId;
+    await api(`/api/supervisor/runs/${appState.runId}/start`, {
+      method: "POST",
+      headers: { "Idempotency-Key": operationKey("start") },
+    });
+    await pollRun();
   } catch (error) {
-    console.error(error);
-    showToast("No se pudo completar la transición. Intenta nuevamente.");
-  } finally {
-    appState.busy = false;
-    renderState();
+    showToast(error.message);
+    setBusy(false);
   }
 }
 
-function resetDemo() {
-  appState.currentState = appState.scenario.current_state;
-  appState.progress = appState.scenario.progress;
-  appState.timeline = [...appState.scenario.timeline];
-  appState.selectedAgent = "billing";
-  renderState();
-  showToast("Demo reiniciada con datos ficticios.");
+function renderRecords(id, records) {
+  const target = byId(id);
+  target.textContent = records
+    .map((record) =>
+      typeof record === "string"
+        ? record
+        : `${record.phase} · ${record.kind}\n${JSON.stringify(record.content, null, 2)}`,
+    )
+    .join("\n");
 }
 
-async function initialize() {
+async function pollRun() {
+  const base = `/api/supervisor/runs/${appState.runId}`;
+  const run = await api(base);
+  byId("run-progress").textContent = `${run.state} · ${run.run_id}`;
+  byId("hero-state").textContent = run.state;
+  const index = STATE_ORDER.indexOf(run.state);
+  if (index >= 0) {
+    appState.currentState = run.state;
+    appState.progress = Math.round((index / (STATE_ORDER.length - 1)) * 100);
+    renderJourney();
+  }
+  if (!["COMPLETED", "MANUAL_REVIEW"].includes(run.state)) {
+    window.setTimeout(pollRun, 1000);
+    return;
+  }
+  const [history, evidence, packageData] = await Promise.all([
+    api(`${base}/history`),
+    api(`${base}/evidence`),
+    api(`${base}/package`),
+  ]);
+  renderRecords("judge-history", history.history);
+  renderRecords("evidence-output", evidence.evidence);
+  appState.packageRevision = packageData.package_revision;
+  byId("package-output").textContent = JSON.stringify(packageData.envelope, null, 2);
+  byId("review-form").hidden = false;
+  setBusy(false);
   try {
-    const response = await fetch("/api/demo/scenario");
-    if (!response.ok) throw new Error(`Scenario failed with status ${response.status}`);
-    appState.scenario = await response.json();
-    appState.currentState = appState.scenario.current_state;
-    appState.progress = appState.scenario.progress;
-    appState.timeline = [...appState.scenario.timeline];
-    renderScenario();
+    lockReview(await api(`${base}/review`));
   } catch (error) {
-    console.error(error);
-    byId("next-title").textContent = "No pudimos cargar la demo";
-    byId("next-description").textContent = "Verifica la conexión y vuelve a cargar la página.";
-    showToast("Error al cargar el escenario.");
+    if (!error.message.includes("not found")) console.debug(error);
   }
 }
 
-byId("primary-action").addEventListener("click", performTransition);
-byId("reset-action").addEventListener("click", resetDemo);
+async function submitReview(event) {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(event.currentTarget));
+  for (const field of ["reason", "annotation"])
+    if (!values[field]?.trim()) delete values[field];
+  try {
+    const decision = await api(`/api/supervisor/runs/${appState.runId}/review`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "Idempotency-Key": operationKey("review") },
+      body: JSON.stringify({ package_revision: appState.packageRevision, ...values }),
+    });
+    lockReview(decision);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function lockReview(decision) {
+  byId("review-status").textContent = `Decisión registrada: ${decision.outcome}`;
+  byId("review-form").querySelector("fieldset").disabled = true;
+}
+
+function syncReviewReason() {
+  byId("review-reason").required = byId("review-outcome").value === "reject";
+}
+
+function setBusy(value) {
+  byId("run-progress").setAttribute("aria-busy", String(value));
+  byId("start-run").disabled = value;
+}
+
 byId("supervisor-dataset-files").addEventListener("change", (event) => {
   const count = event.target.files.length;
   byId("dataset-file-label").textContent = count
@@ -392,5 +479,8 @@ byId("supervisor-dataset-files").addEventListener("change", (event) => {
     : "Seleccionar seis CSV o un ZIP";
 });
 byId("publish-dataset").addEventListener("click", publishDataset);
-initialize();
+byId("rules-form").addEventListener("submit", startRun);
+byId("review-form").addEventListener("submit", submitReview);
+byId("review-outcome").addEventListener("change", syncReviewReason);
+syncReviewReason();
 loadDatasetStatus();

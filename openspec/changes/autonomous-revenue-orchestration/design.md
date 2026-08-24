@@ -14,6 +14,12 @@ inputs, transitions, results, verdicts, and review. The browser performs intake,
 | Execution | One FastAPI background runner with durable lease and polling. | Internal HTTP duplicates boundaries; SSE is deferred. |
 | Judge | Hard gates precede an independent model rubric, preserving evidence authority. | Model-only judgment. |
 
+The local-PV operating contract is fixed to node `gabo-vm-arm`, storage class `local-storage`,
+`/mnt/tesis_data/movistar` (5Gi live) and `/mnt/tesis_data/movistar-backups` (10Gi backup).
+Backups run daily with 14-day retention; objectives are RPO 24h and RTO 4h. Both volumes are
+node-local: they do not protect against node or disk loss, so off-node replication remains a
+production-hardening follow-up.
+
 ## Data Flow
 
 ```mermaid
@@ -75,7 +81,8 @@ limitations, the final package, and one analyst decision.
 
 ## Security and File Changes
 
-Uploads remain six allow-listed CSV/ZIP sources, 25 MiB maximum, bounded rows/fields, validated encoding/schema;
+Uploads remain six allow-listed CSV/ZIP sources, 25 MiB maximum, 250,000 data rows per source and
+256 fields per row, with validated encoding/schema;
 traversal/symlinks, absolute paths, duplicates, formulas, and unsupported instructions are rejected.
 Server IDs and resolved containment prevent path injection. Evidence is append-only/checksummed; raw rows
 never reach prompts. Secrets remain Kubernetes Secrets; tools are read-only.
@@ -107,5 +114,5 @@ restores the prior image while retaining/exporting the PVC.
 
 ## Open Questions
 
-- [ ] Confirm local-PV node hostname/path, capacity, backup destination, retention, and restore RPO/RTO.
-- [ ] Select the trusted analyst identity source for final-review audit records.
+- [x] Local PV contract: `gabo-vm-arm`, paths/capacities above, daily/14 days, RPO 24h/RTO 4h.
+- [x] Trust the proxy/SSO `X-Forwarded-User` claim; ingress strips client values and overwrites this header.
