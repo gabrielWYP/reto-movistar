@@ -23,6 +23,7 @@ _OPERATIONS = {
     SpecialistPhase.COLLECTIONS: "portfolio_snapshot",
     SpecialistPhase.BI: "executive_snapshot",
 }
+DatasetScope = Callable[[str, Callable[[], dict[str, Any]]], dict[str, Any]]
 
 
 class BillingService(Protocol):
@@ -45,8 +46,14 @@ def _reference(identity: str, value: object) -> EvidenceReference:
 class SpecialistAdapter:
     """Bind one fixed read-only operation to the normalized result contract."""
 
-    def __init__(self, phase: SpecialistPhase, runner: Callable[[str], dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        phase: SpecialistPhase,
+        runner: Callable[[str], dict[str, Any]],
+        dataset_scope: DatasetScope | None = None,
+    ) -> None:
         self.phase, self.operation, self._runner = phase, _OPERATIONS[phase], runner
+        self._dataset_scope = dataset_scope
 
     def execute(self, plan: ExecutionPlan, *, attempt: int) -> SpecialistResult:
         """Execute the fixed tool and normalize its evidence with revision lineage."""
@@ -55,7 +62,13 @@ class SpecialistAdapter:
         if self.phase is not SpecialistPhase.BILLING and not plan.upstream_evidence:
             raise ValueError(f"{self.phase} requires approved upstream evidence")
         started = perf_counter()
-        raw = self._runner(plan.as_of_date.isoformat())
+
+        def invoke() -> dict[str, Any]:
+            return self._runner(plan.as_of_date.isoformat())
+
+        raw = (
+            self._dataset_scope(plan.dataset_revision, invoke) if self._dataset_scope else invoke()
+        )
         payload = raw.get("agent_response", raw)
         if not isinstance(payload, dict):
             raise ValueError("Specialist returned an invalid response envelope")
@@ -111,7 +124,10 @@ class SpecialistAdapter:
 
 
 def build_specialist_adapters(
-    billing: BillingService, collections: ToolBackend, bi: ToolBackend
+    billing: BillingService,
+    collections: ToolBackend,
+    bi: ToolBackend,
+    dataset_scope: DatasetScope | None = None,
 ) -> dict[SpecialistPhase, SpecialistAdapter]:
     """Wire fixed deterministic operations without HTTP or prompt execution."""
     runners = (
@@ -120,6 +136,6 @@ def build_specialist_adapters(
         lambda at: bi.execute_tool("executive_snapshot", {}, at),
     )
     return {
-        phase: SpecialistAdapter(phase, runner)
+        phase: SpecialistAdapter(phase, runner, dataset_scope)
         for phase, runner in zip(SpecialistPhase, runners, strict=True)
     }

@@ -76,16 +76,34 @@ def create_app(
     )
     billing_registry = billing_application.state.dataset_registry
     runtime_runner, runtime_storage = run_orchestrator, run_storage
-    if runtime_runner is None and runtime_storage is None and runtime_settings.storage_root:
-        intake = SQLiteIntakeRepository(runtime_settings.storage_root)
+    production_intake = (
+        SQLiteIntakeRepository(runtime_settings.storage_root)
+        if runtime_runner is None and runtime_storage is None and runtime_settings.storage_root
+        else None
+    )
+    dataset_coordinator = SupervisorDatasetCoordinator(
+        runtime_bi_backend,
+        runtime_collections_backend,
+        billing_registry,
+        production_intake or (runtime_runner.intake if runtime_runner is not None else None),
+    )
+    if production_intake is not None and runtime_settings.storage_root:
         runtime_storage = StorageHardener(runtime_settings.storage_root)
+        try:
+            dataset_coordinator.rehydrate_latest()
+        except (KeyError, OSError, RuntimeError, ValueError) as error:
+            logger.error(
+                "supervisor_dataset_rehydration_failed",
+                extra={"error_type": type(error).__name__},
+            )
         runtime_runner = RunOrchestrator(
             runtime_storage.database,
-            intake,
+            production_intake,
             build_specialist_adapters(
                 _CurrentBilling(billing_registry),
                 runtime_collections_backend,
                 runtime_bi_backend,
+                dataset_coordinator.execute_on_revision,
             ),
             Judge(),
             owner=f"api-{uuid4()}",
@@ -99,12 +117,6 @@ def create_app(
             },
         )
     application.mount("/api/billing", billing_application, name="billing-agent")
-    dataset_coordinator = SupervisorDatasetCoordinator(
-        runtime_bi_backend,
-        runtime_collections_backend,
-        billing_registry,
-        runtime_runner.intake if runtime_runner is not None else None,
-    )
     application.state.dataset_coordinator = dataset_coordinator
     application.state.run_orchestrator = runtime_runner
     application.state.run_storage = runtime_storage

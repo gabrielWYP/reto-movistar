@@ -7,6 +7,7 @@ import io
 import logging
 import re
 import zipfile
+from collections.abc import Callable
 from pathlib import PurePosixPath
 from threading import RLock
 from typing import Any
@@ -153,6 +154,7 @@ class SupervisorDatasetCoordinator:
         self._billing = billing_registry
         self._intake = intake_repository
         self._lock = RLock()
+        self._active_revision: str | None = None
 
     def _billing_status(self) -> dict[str, Any]:
         try:
@@ -201,6 +203,34 @@ class SupervisorDatasetCoordinator:
             "dataset_bytes": bi["dataset_bytes"] if supervisor_owned else 0,
             "agents": agents,
         }
+
+    def _rehydrate(self, revision_id: str) -> dict[str, Any]:
+        if self._intake is None:
+            raise RuntimeError("Durable intake is unavailable")
+        if self._active_revision == revision_id:
+            return self.status()
+        restored = self.publish(
+            self._intake.read_dataset_files(revision_id),
+            idempotency_key=f"rehydrate:{revision_id}",
+        )
+        logger.info(
+            "supervisor_dataset_rehydrated",
+            extra={"dataset_revision": revision_id, "agents_ready": 3},
+        )
+        return restored
+
+    def rehydrate_latest(self) -> dict[str, Any] | None:
+        """Restore the latest durable Supervisor revision into all specialist registries."""
+        revision = self._intake.latest_dataset() if self._intake else None
+        return self._rehydrate(revision.revision_id) if revision else None
+
+    def execute_on_revision(
+        self, revision_id: str, operation: Callable[[], dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Execute one specialist operation while its bound revision is active."""
+        with self._lock:
+            self._rehydrate(revision_id)
+            return operation()
 
     def publish(
         self,
@@ -251,6 +281,7 @@ class SupervisorDatasetCoordinator:
                 source=SUPERVISOR_SOURCE,
             )
             self._billing.publish_default(billing_service, origin=SUPERVISOR_ORIGIN)
+            self._active_revision = revision.revision_id if revision else None
 
         result = self.status()
         if revision is not None:
