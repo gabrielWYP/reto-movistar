@@ -23,11 +23,14 @@ from sonia.application.dataset_supervisor import (
     SupervisorDatasetCoordinator,
 )
 from sonia.application.demo_service import build_demo_scenario, transition_demo
+from sonia.application.orchestrator import RunOrchestrator
 from sonia.config import Settings, get_settings
 from sonia.domain.agents import AgentDescriptor
 from sonia.domain.demo import DemoScenarioResponse, DemoTransitionRequest, DemoTransitionResponse
 from sonia.domain.health import HealthResponse
+from sonia.entrypoints.run_api import create_run_router
 from sonia.observability.logging import configure_logging
+from sonia.persistence.backup import StorageHardener
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,8 @@ def create_app(
     settings: Settings | None = None,
     bi_backend: BIBackend | None = None,
     collections_backend: CollectionsBackend | None = None,
+    run_orchestrator: RunOrchestrator | None = None,
+    run_storage: StorageHardener | None = None,
 ) -> FastAPI:
     """Create an application instance with explicit runtime dependencies."""
     runtime_settings = settings or get_settings()
@@ -47,6 +52,8 @@ def create_app(
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
+    if run_orchestrator is not None and run_storage is not None:
+        application.include_router(create_run_router(run_orchestrator, run_storage))
     runtime_bi_backend = bi_backend or BIBackend()
     application.include_router(create_bi_router(runtime_bi_backend, allow_manual_upload=False))
     runtime_collections_backend = collections_backend or CollectionsBackend()

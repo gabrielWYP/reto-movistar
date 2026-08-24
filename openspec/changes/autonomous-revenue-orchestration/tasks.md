@@ -27,7 +27,7 @@ Selected Feature Branch Chain: app1 targets a draft tracker; each later app PR t
 ## Phase 0: Pre-apply Gates
 
 - [ ] 0.1 Record PV hostname/path/capacity, backup target/retention, and RPO/RTO before H.
-- [ ] 0.2 Select trusted analyst identity and immutable audit fields before E.
+- [x] 0.2 Select trusted analyst identity and immutable audit fields before E.
 
 ## Phase 1: Domain and Intake
 
@@ -51,7 +51,7 @@ Selected Feature Branch Chain: app1 targets a draft tracker; each later app PR t
 
 ## Phase 4: API, UI, Review
 
-- [ ] 4.1 RED: add `back/tests/integration/test_run_api.py` for Runs/Final Review API scenarios.
+- [x] 4.1 RED: add `back/tests/integration/test_run_api.py` for Runs/Final Review API scenarios.
 - [ ] 4.2 GREEN: create `entrypoints/run_api.py`; wire `api.py`, identity, conflicts/review routes; REFACTOR OpenAPI docs.
 - [ ] 4.3 RED: add `back/tests/integration/test_supervisor_ui.py` for intake→progress→Judge→one decision and read-only tabs.
 - [ ] 4.4 GREEN: replace demo in `front/index.html`, `assets/app.js`, `assets/app.css`; REFACTOR accessible polling/manual-review/docs.

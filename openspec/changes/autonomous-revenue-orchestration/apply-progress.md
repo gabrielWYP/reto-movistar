@@ -3,9 +3,9 @@
 ## Cumulative Status
 
 - Mode: Strict TDD; delivery: Feature Branch Chain.
-- Completed: 1.1-3.3 (11/21); remaining: gates 0.1-0.2 and tasks 4.1-5.4.
-- Current branch: `feature/autonomous-revenue-orchestration-06-review-package`.
-- Intended base: `feature/autonomous-revenue-orchestration-05-storage-hardening`.
+- Completed: 0.2, 1.1-4.1 (13/21); remaining: gate 0.1 and tasks 4.2-5.4.
+- Current branch: `feature/autonomous-revenue-orchestration-07-run-api-review`.
+- Intended base: `feature/autonomous-revenue-orchestration-06-review-package`.
 
 ## TDD Cycle Evidence
 
@@ -16,6 +16,7 @@
 | 2.1-2.4 | Collection failed without modules; lineage correction: 1 failed/1 passed | GREEN: 5 passed; lineage correction: 2 passed | PASS/hard failure, retry/manual, fallback, history, bound run/attempt/tool evidence | Simplified evidence normalization; focused green |
 | 3.1-3.2 | Missing module; correction RED: retry-then-pass exceeded bound 8 | GREEN: 4 passed; correction passed with bound 13 | Replays/conflicts, sequence, restart, owners, retry/pass, retry/manual, storage loss | Compact transactional runner; focused green |
 | 3.3 | Missing symbols; correction REDs covered backup/reason, terminal auto-package, reopen and repeated-direct version drift | Storage 6 passed; package 5 passed in 1.98s | Exact backup, corrupt freeze, durable reason/version idempotency, automatic terminal packages, explicit corruption harness | Formatted split; combined 21 passed |
+| 0.2, 4.1; 4.2 partial | Initial 4 failed without wiring; namespace correction: 4 failed with Supervisor 404 | Core router/DI/review and Supervisor prefix GREEN: 4 passed | 202/poll/replay, completed accept, manual reject, identity, conflicts, package mismatch/corruption | Production composition, durable intake routes and evidence-content retrieval remain |
 
 ## Work Unit Evidence
 
@@ -31,6 +32,7 @@
 | D/app4 | Focused: 4 passed in 2.18s; combined regression: 20 passed in 2.58s. Runtime restart/competing-owner harness: 1 passed in 1.20s. Ruff/format/Mypy/diff passed. Rollback: remove `orchestrator.py` and its integration test; revert tasks 3.1-3.2. Task 3.3 remains pending as a complete child slice. |
 | E/app5-storage partial | Focused 5 passed in 2.06s; combined 25 passed in 3.74s; runtime backup→restore + corruption/start freeze 2 passed in 1.44s. Ruff/format/Mypy/diff passed. Rollback: remove `backup.py`, test and runner guard; task 3.3 stays open. |
 | F/app6-package | Focused 5 passed in 1.98s; combined 21 passed in 3.42s. Runtime autonomous completed+manual packages: 2 passed in 1.34s. Ruff/format/Mypy/diff passed. Rollback: remove package validator/assembler, auto-trigger/escalation/manual reason and package test; reopen 3.3. |
+| G/app7-run-api partial | Focused `.venv-py312/bin/pytest -q -s back/tests/integration/test_run_api.py`: 4 passed; combined durable: 24 passed; final Supervisor/API regression: 14 passed; TestClient harness `.venv-py312/bin/pytest -q -s back/tests/integration/test_run_api.py::test_completed_review_is_append_only_and_digest_idempotent`: 1 passed. Core router/DI/review store is proven; production composition, dataset/questions/ruleset routes and evidence content/review retrieval move to the immediate child slice. Ruff/format/Mypy/diff passed. Rollback: remove `run_api.py`/test, revert optional `api.py` injection and 0.2/4.1. |
 
 ## Work Unit A/app1
 
