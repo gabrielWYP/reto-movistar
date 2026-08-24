@@ -75,7 +75,8 @@ limitations, the final package, and one analyst decision.
 
 ## Security and File Changes
 
-Uploads remain six allow-listed CSV/ZIP sources, 25 MiB maximum, bounded rows/fields, validated encoding/schema;
+Uploads remain six allow-listed CSV/ZIP sources, 25 MiB maximum, 250,000 data rows per source and
+256 fields per row, with validated encoding/schema;
 traversal/symlinks, absolute paths, duplicates, formulas, and unsupported instructions are rejected.
 Server IDs and resolved containment prevent path injection. Evidence is append-only/checksummed; raw rows
 never reach prompts. Secrets remain Kubernetes Secrets; tools are read-only.

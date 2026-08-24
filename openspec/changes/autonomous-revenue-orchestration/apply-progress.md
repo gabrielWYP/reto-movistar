@@ -3,9 +3,9 @@
 ## Cumulative Status
 
 - Mode: Strict TDD; delivery: Feature Branch Chain.
-- Completed: 0.2, 1.1-4.4 (16/21); remaining: gate 0.1 and tasks 5.1-5.4.
-- Current branch: `feature/autonomous-revenue-orchestration-09-supervisor-ui`.
-- Intended base: `feature/autonomous-revenue-orchestration-08-production-composition`.
+- Completed: 0.2, 1.1-5.2 (18/21); remaining: gate 0.1 and tasks 5.3-5.4.
+- Current branch: `feature/autonomous-revenue-orchestration-10-hardening-e2e`.
+- Intended base: `feature/autonomous-revenue-orchestration-09-supervisor-ui`.
 
 ## TDD Cycle Evidence
 
@@ -18,6 +18,7 @@
 | 3.3 | Missing symbols; correction REDs covered backup/reason, terminal auto-package, reopen and repeated-direct version drift | Storage 6 passed; package 5 passed in 1.98s | Exact backup, corrupt freeze, durable reason/version idempotency, automatic terminal packages, explicit corruption harness | Formatted split; combined 21 passed |
 | 0.2, 4.1-4.2 | Initial 4 failed without wiring; app8 RED: 2 failed without `storage_root` | Core router/DI plus production composition GREEN: 6 focused passed | Durable intake/run/reopen, dynamic adapters, evidence/review reads, whitespace fail-closed | Shared helpers and immutable typed responses; combined 11 passed |
 | 4.3-4.4 | UI RED: 1 failed/1 passed without autonomous controls | Focused GREEN: 3 passed | Static accessibility/read-only boundary plus real six-step terminal API journey | Removed runtime demo calls; Node syntax and focused regression passed |
+| 5.1-5.2 | Import RED; triangulation 2 failed/6 passed; review REDs: 2 failed then physical-row 1 failed | Focused GREEN: 12 passed | CSV/ZIP limits, localized negatives, sanitized 503, prompt exclusion, lineage and telemetry | Preserved one safe ZIP wrapper, bounded nesting, fixed recovery semantics; combined 32 passed |
 
 ## Work Unit Evidence
 
@@ -36,6 +37,7 @@
 | G/app7-run-api partial | Focused `.venv-py312/bin/pytest -q -s back/tests/integration/test_run_api.py`: 4 passed; combined durable: 24 passed; final Supervisor/API regression: 14 passed; TestClient harness `.venv-py312/bin/pytest -q -s back/tests/integration/test_run_api.py::test_completed_review_is_append_only_and_digest_idempotent`: 1 passed. Core router/DI/review store is proven; production composition, dataset/questions/ruleset routes and evidence content/review retrieval move to the immediate child slice. Ruff/format/Mypy/diff passed. Rollback: remove `run_api.py`/test, revert optional `api.py` injection and 0.2/4.1. |
 | H/app8-production-composition | Focused TestClient: 2 passed; combined API/Supervisor regression: 11 passed. Runtime flow published six CSVs, created rules/run, completed all six steps, read package/evidence/review, then reopened SQLite successfully. Ruff/format/Mypy/diff passed. Rollback: revert default composition, intake/evidence/review routes, storage setting/Docker ownership, test, design decision and task 4.2. |
 | I/app9-supervisor-ui | Focused/runtime `.venv-py312/bin/pytest -q -s back/tests/integration/test_supervisor_ui.py`: 3 passed, including real dataset→rules→202 start→COMPLETED with six evidence records; `node --check front/assets/app.js` passed. Chromium snap could not reach the WSL-local server, so no browser claim is made. Rollback: revert the three Supervisor frontend files, remove the UI test, reopen 4.3-4.4. |
+| J/app10-hardening-e2e | Focused/runtime `.venv-py312/bin/pytest -q -s back/tests/end_to_end/test_autonomous_run.py`: 12 passed; real app completed six steps/package and ASGI readiness returned 503 after dataset corruption. Combined non-TestClient regression: 32 passed. Ruff/format/Mypy/Compose/diff passed. Rollback: remove E2E test and revert validation, `/ready`, upload-path and orchestration-log changes; reopen 5.1-5.2. |
 
 ## Work Unit A/app1
 

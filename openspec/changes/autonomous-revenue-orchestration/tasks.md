@@ -58,7 +58,7 @@ Selected Feature Branch Chain: app1 targets a draft tracker; each later app PR t
 
 ## Phase 5: Operations
 
-- [ ] 5.1 RED: add `back/tests/end_to_end/test_autonomous_run.py` for upload security, corruption, prompt exclusion, readiness, telemetry, lineage.
-- [ ] 5.2 GREEN: harden limits/logging/docs; run pytest, Ruff, Mypy, format, Compose checks.
+- [x] 5.1 RED: add `back/tests/end_to_end/test_autonomous_run.py` for upload security, corruption, prompt exclusion, readiness, telemetry, lineage.
+- [x] 5.2 GREEN: harden limits/logging/docs; run pytest, Ruff, Mypy, format, Compose checks.
 - [ ] 5.3 Infra RED/GREEN: validate then add retained PV/PVC, UID/GID 1001 mount, one `Recreate` backend, affinity, backup/restore under `K3S_Infra/Movistar`.
 - [ ] 5.4 Verify K3S: six-CSV run, retry, restart, restore, analyst decision, no external effect.
