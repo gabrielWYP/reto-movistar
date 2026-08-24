@@ -30,6 +30,11 @@ _REVIEW_SCHEMA = (
     "idempotency_key TEXT PRIMARY KEY,request_digest TEXT NOT NULL,"
     "package_revision TEXT UNIQUE NOT NULL,payload TEXT NOT NULL)"
 )
+_ANNOTATION_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS evidence_annotations("
+    "idempotency_key TEXT PRIMARY KEY,request_digest TEXT NOT NULL,run_id TEXT NOT NULL,"
+    "evidence_sequence INTEGER NOT NULL,payload TEXT NOT NULL)"
+)
 
 
 def _non_blank(value: str) -> str:
@@ -96,6 +101,35 @@ class ReviewDecision(_Immutable):
     reason: str | None
     annotation: str | None
     decided_at: datetime
+    idempotency_key: str
+    request_digest: str
+
+
+class EvidenceAnnotationRequest(_Immutable):
+    """One non-decision analyst note linked to committed run evidence."""
+
+    annotation: str = Field(min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def reject_blank(self) -> EvidenceAnnotationRequest:
+        """Reject whitespace-only notes at the durable boundary."""
+        if not self.annotation.strip():
+            raise ValueError("Annotation cannot be whitespace-only")
+        return self
+
+
+class EvidenceAnnotation(_Immutable):
+    """Append-only intermediate note, separate from final review decisions."""
+
+    annotation_id: str
+    run_id: str
+    evidence_sequence: int
+    evidence_digest: str
+    analyst_id: str
+    identity_source: Literal["trusted_proxy_sso"] = "trusted_proxy_sso"
+    identity_header: Literal["X-Forwarded-User"] = "X-Forwarded-User"
+    annotation: str
+    annotated_at: datetime
     idempotency_key: str
     request_digest: str
 
@@ -176,6 +210,73 @@ class _ReviewStore:
         return ReviewDecision.model_validate_json(row[0])
 
 
+class _AnnotationStore:
+    """Persist evidence-bound notes without touching run state or final review."""
+
+    def __init__(self, runner: RunOrchestrator) -> None:
+        self.database = runner.database
+        with sqlite3.connect(self.database) as connection:
+            connection.execute(_ANNOTATION_SCHEMA)
+
+    def record(
+        self,
+        run_id: str,
+        sequence: int,
+        evidence_digest: str,
+        request: EvidenceAnnotationRequest,
+        analyst_id: str,
+        key: str,
+    ) -> EvidenceAnnotation:
+        content = {
+            "run_id": run_id,
+            "evidence_sequence": sequence,
+            "evidence_digest": evidence_digest,
+            "analyst_id": analyst_id,
+            "annotation": request.annotation.strip(),
+        }
+        digest = sha256(_canonical(content)).hexdigest()
+        with sqlite3.connect(self.database) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT request_digest,payload FROM evidence_annotations WHERE idempotency_key=?",
+                (key,),
+            ).fetchone()
+            if row:
+                if row[0] != digest:
+                    raise ValueError("Conflicting annotation idempotency key content")
+                return EvidenceAnnotation.model_validate_json(row[1])
+            annotation = EvidenceAnnotation(
+                annotation_id=f"annotation_{digest[:20]}",
+                run_id=run_id,
+                evidence_sequence=sequence,
+                evidence_digest=evidence_digest,
+                analyst_id=analyst_id,
+                annotation=request.annotation.strip(),
+                annotated_at=datetime.now(UTC),
+                idempotency_key=key,
+                request_digest=digest,
+            )
+            connection.execute(
+                "INSERT INTO evidence_annotations VALUES(?,?,?,?,?)",
+                (key, digest, run_id, sequence, annotation.model_dump_json()),
+            )
+        _LOG.info(
+            "evidence_annotation_committed",
+            extra={"run_id": run_id, "evidence_sequence": sequence, "analyst_id": analyst_id},
+        )
+        return annotation
+
+    def list(self, run_id: str, sequence: int) -> tuple[EvidenceAnnotation, ...]:
+        """Read notes in append order for one exact evidence row."""
+        with sqlite3.connect(self.database) as connection:
+            rows = connection.execute(
+                "SELECT payload FROM evidence_annotations "
+                "WHERE run_id=? AND evidence_sequence=? ORDER BY rowid",
+                (run_id, sequence),
+            ).fetchall()
+        return tuple(EvidenceAnnotation.model_validate_json(row[0]) for row in rows)
+
+
 def _analyst(value: str | None) -> str:
     if value is None or not _IDENTITY.fullmatch(value.strip()):
         raise HTTPException(status_code=401, detail="Trusted analyst identity is required")
@@ -234,6 +335,13 @@ def create_run_router(
     """Create revision-bound run and immutable final-review routes."""
     router = APIRouter(prefix="/api/supervisor", tags=["revenue-runs"])
     reviews = _ReviewStore(runner)
+    annotations = _AnnotationStore(runner)
+
+    def committed_evidence(run_id: str, sequence: int) -> dict[str, object]:
+        try:
+            return next(item for item in runner.evidence(run_id) if item["sequence"] == sequence)
+        except (KeyError, StopIteration) as error:
+            raise HTTPException(status_code=404, detail="Committed evidence not found") from error
 
     @router.post("/datasets", status_code=201, tags=["supervisor-intake"])
     async def publish_dataset(
@@ -303,6 +411,32 @@ def create_run_router(
             return {"run_id": run_id, "evidence": runner.evidence(run_id)}
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Run not found") from error
+
+    @router.get("/runs/{run_id}/evidence/{sequence}/annotations")
+    def evidence_annotations(run_id: str, sequence: int) -> tuple[EvidenceAnnotation, ...]:
+        committed_evidence(run_id, sequence)
+        return annotations.list(run_id, sequence)
+
+    @router.post("/runs/{run_id}/evidence/{sequence}/annotations", status_code=201)
+    def annotate_evidence(
+        run_id: str,
+        sequence: int,
+        request: EvidenceAnnotationRequest,
+        key: IdempotencyKey,
+        forwarded_user: Annotated[str | None, Header(alias="X-Forwarded-User")] = None,
+    ) -> EvidenceAnnotation:
+        evidence = committed_evidence(run_id, sequence)
+        try:
+            return annotations.record(
+                run_id,
+                sequence,
+                sha256(_canonical(evidence)).hexdigest(),
+                request,
+                _analyst(forwarded_user),
+                key,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @router.get("/runs/{run_id}/package")
     def package(run_id: str) -> dict[str, object]:

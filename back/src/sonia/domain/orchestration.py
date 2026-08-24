@@ -59,6 +59,21 @@ class BusinessRule(ImmutableModel):
     answer: str = Field(min_length=1)
 
 
+_EXTERNAL_EFFECT_TERMS = tuple(
+    "issue invoice|apply payment|contact customer|delete|emitir factura|aplicar pago|"
+    "contactar cliente|eliminar".split("|")
+)
+
+
+def external_effect_rule_ids(rules: tuple[BusinessRule, ...]) -> tuple[str, ...]:
+    """Return bound rules requesting unsupported external business effects."""
+    return tuple(
+        rule.rule_id
+        for rule in rules
+        if any(term in rule.answer.lower() for term in _EXTERNAL_EFFECT_TERMS)
+    )
+
+
 class EvidenceReference(ImmutableModel):
     """Pointer to immutable evidence with its integrity digest."""
 

@@ -14,7 +14,7 @@ from pathlib import Path
 from bi_agent.data import TABLE_FILES
 from pydantic import Field
 
-from sonia.domain.orchestration import BusinessRule, ImmutableModel
+from sonia.domain.orchestration import BusinessRule, ImmutableModel, external_effect_rule_ids
 
 _QUESTION_DEFS = (
     ("as_of_date", "global", "date", None),
@@ -24,10 +24,6 @@ _QUESTION_DEFS = (
     ("overdue_days", "collections", "number", "payments"),
     ("variance_threshold", "bi", "number", "invoices"),
 )
-_FORBIDDEN_EFFECTS = (
-    "issue invoice|apply payment|contact customer|delete|"
-    "emitir factura|aplicar pago|contactar cliente|eliminar"
-).split("|")
 
 
 class DatasetFile(ImmutableModel):
@@ -244,9 +240,8 @@ class SQLiteIntakeRepository:
             for item in questions
         )
         rejected = tuple(
-            f"Unsupported external-effect instruction: {rule.rule_id}"
-            for rule in rules
-            if any(term in rule.answer.lower() for term in _FORBIDDEN_EFFECTS)
+            f"Unsupported external-effect instruction: {rule_id}"
+            for rule_id in external_effect_rule_ids(rules)
         )
         serialized = (
             dataset_revision + "|" + "|".join(f"{rule.rule_id}={rule.answer}" for rule in rules)

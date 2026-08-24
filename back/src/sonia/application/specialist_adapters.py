@@ -16,6 +16,7 @@ from sonia.domain.orchestration import (
     SpecialistPhase,
     SpecialistResult,
     ValidationCheck,
+    external_effect_rule_ids,
 )
 
 _OPERATIONS = {
@@ -62,6 +63,39 @@ class SpecialistAdapter:
         if self.phase is not SpecialistPhase.BILLING and not plan.upstream_evidence:
             raise ValueError(f"{self.phase} requires approved upstream evidence")
         started = perf_counter()
+        unsafe = external_effect_rule_ids(plan.global_rules + plan.specialist_rules)
+        prefix = f"{plan.run_id}:{self.phase}:attempt={attempt}:{self.operation}"
+        dataset = _reference(f"dataset:{plan.dataset_revision}", plan.dataset_revision)
+        ruleset = _reference(f"ruleset:{plan.ruleset_revision}", plan.ruleset_revision)
+        if unsafe:
+            refusal = _reference(f"{prefix}:external-effect-refusal", unsafe)
+            refs = (dataset.evidence_id, ruleset.evidence_id, refusal.evidence_id)
+            return SpecialistResult(
+                phase=self.phase,
+                attempt=attempt,
+                status="EXTERNAL_EFFECT_REFUSED",
+                validation_checks=(
+                    ValidationCheck(
+                        name="external_effect",
+                        passed=False,
+                        detail="unsupported bound rules refused: " + ", ".join(unsafe),
+                    ),
+                    ValidationCheck(name="read_only", passed=True, detail="tool not invoked"),
+                ),
+                findings=(
+                    Finding(
+                        code="EXTERNAL_EFFECT_REFUSED",
+                        summary="Unsupported external effect was not executed",
+                        evidence_refs=refs,
+                    ),
+                ),
+                evidence_refs=plan.upstream_evidence + (dataset, ruleset, refusal),
+                data_quality=(),
+                recommended_actions=("Revise the bound rule for read-only analysis",),
+                metadata=ExecutionMetadata(
+                    latency_ms=round((perf_counter() - started) * 1000), token_count=0
+                ),
+            )
 
         def invoke() -> dict[str, Any]:
             return self._runner(plan.as_of_date.isoformat())
@@ -72,10 +106,7 @@ class SpecialistAdapter:
         payload = raw.get("agent_response", raw)
         if not isinstance(payload, dict):
             raise ValueError("Specialist returned an invalid response envelope")
-        prefix = f"{plan.run_id}:{self.phase}:attempt={attempt}:{self.operation}"
         output = _reference(f"{prefix}:result", payload)
-        dataset = _reference(f"dataset:{plan.dataset_revision}", plan.dataset_revision)
-        ruleset = _reference(f"ruleset:{plan.ruleset_revision}", plan.ruleset_revision)
         evidence = plan.upstream_evidence + (dataset, ruleset, output)
         findings = tuple(
             Finding(
