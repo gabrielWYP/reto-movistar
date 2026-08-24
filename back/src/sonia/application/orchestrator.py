@@ -196,6 +196,7 @@ class RunOrchestrator:
                 and lease["lease_expires"] > time.time()
             ):
                 raise RuntimeError(f"Run is leased by {lease['lease_owner']}")
+            recovery = lease["lease_owner"] not in (None, self.owner)
             connection.execute(
                 "UPDATE runs SET lease_owner = ?, lease_expires = ? WHERE run_id = ?",
                 (self.owner, time.time() + self.lease_seconds, run_id),
@@ -237,12 +238,14 @@ class RunOrchestrator:
             "run_step_committed",
             extra={
                 "run_id": run_id,
+                "dataset_revision": run.dataset_revision,
                 "phase": phase,
                 "attempt": step.attempt,
                 "verdict": getattr(step, "verdict", None),
-                "lease_owner": self.owner,
+                "lease": self.owner,
                 "latency_ms": step.metadata.latency_ms,
-                "recovery": run.version > 1,
+                "tokens": step.metadata.token_count,
+                "recovery": recovery,
             },
         )
         if advanced.state in (RunState.COMPLETED, RunState.MANUAL_REVIEW):

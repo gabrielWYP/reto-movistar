@@ -206,7 +206,11 @@ async def read_dataset_uploads(
     payload: dict[str, bytes] = {}
     request_bytes = 0
     for upload in files:
-        filename = Path(upload.filename or "").name
+        raw_name = upload.filename or ""
+        candidate = Path(raw_name.replace("\\", "/"))
+        if candidate.is_absolute() or ".." in candidate.parts or len(candidate.parts) != 1:
+            raise HTTPException(status_code=422, detail="La ruta del archivo no está permitida.")
+        filename = candidate.name
         if not filename or Path(filename).suffix.lower() not in {".csv", ".zip"}:
             raise HTTPException(status_code=422, detail="Solo se aceptan archivos CSV o ZIP.")
         if filename in payload:
