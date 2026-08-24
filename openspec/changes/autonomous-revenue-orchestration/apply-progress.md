@@ -3,9 +3,9 @@
 ## Cumulative Status
 
 - Mode: Strict TDD; delivery: Feature Branch Chain.
-- Completed: 25/27 tasks; remaining: live K3S 5.4 and remediation deployment 6.4.
-- Current branch: `feature/autonomous-revenue-final-remediation`.
-- Intended base: `feature/recovery-rehydrate-billing`.
+- Completed: 27/27 tasks; remaining: none.
+- Current branch: `feature/autonomous-revenue-closeout-final`.
+- Intended base: `main` at deployed SHA `b06271669fcc4ee35859ab3b3df7cb276936f165`.
 
 ## TDD Cycle Evidence
 
@@ -25,6 +25,7 @@
 | 6.3 / Slice C | Workflow parse green | Contract RED: 1 failed because the reusable deploy caller forwarded no analyst roster | Focused contract: 1 passed | Exact required secret mapping is present once under the reusable deploy job | Caller-only passthrough; roster reconciliation and BasicAuth enforcement remain owned by K3S Infra |
 | Issue #54 recovery remediation | Intake/adapters 20 green | Direct production-composition RED: 1 failed because recreated registries were empty | Focused GREEN: 1 passed; proportional recovery/intake/adapters: 20 passed | A newer publication is restored at startup, then the paused run atomically reactivates its older bound revision and completes eight exact steps | Added checksummed durable reads and a shared revision-scoped execution boundary; TestClient baseline timed out, direct app-state harness passed |
 | Issue #57 final remediation | Direct safety net 11 passed; TestClient baseline timed out at 60s | Annotation collection error; adapter invoked forbidden tool once | Focused direct GREEN: 6 passed | Active Billing annotation/resume, durable reopen/identity/conflict; Spanish/English refusal; reject replay/conflict no rerun | Shared effect detector, dedicated annotation store and pre-tool non-retryable hard gate; no TestClient transport |
+| 5.4, 6.4 live closeout | PR #58 and CI/deploy workflows green | Prior live restart exposed missing registry rehydration; Issue #54 reproduced it directly | Deployed `b062716`; durable run, backup/restore, analyst decision and public auth gates passed | Eight ordered evidence rows with one Billing retry; fresh restore matched six hashes/package; external-effect run rejected | No code changed in closeout; merged remediations preserve deterministic refusal and recovery |
 
 ## Work Unit Evidence
 
@@ -50,6 +51,7 @@
 | N/app15-deploy-auth | Focused `.venv-py312/bin/pytest -q -s back/tests/integration/test_deploy_auth_contract.py`: 1 passed. Workflow YAML/action syntax and diff passed. Runtime deployment is deferred to 6.4; K3S Infra declares the secret required and reconciles its BasicAuth roster. Rollback: remove only the caller mapping/test and reopen 6.3. |
 | O/issue-54-recovery | Focused direct harness: 1 passed; combined direct regression: 20 passed. Recreated `create_app` over the same root restored all registries, resumed from Billing attempt 1, completed eight rows with Judge `RETRY/PASS/PASS/PASS`, and did not duplicate attempt 1 even when a newer dataset existed. Ruff/format/Mypy/diff passed. Rollback: revert repository reads, coordinator revision scope, production composition wiring, recovery test and this design note; 5.4/6.4 remain open. |
 | P/issue-57-final-remediation | Safety net: 11 passed; TestClient baseline timed out at 60s. RED: annotation import error and forbidden tool called once. Focused/direct: 6 passed; proportional: 15 passed in 2.91s. Runtime annotated Billing at `BILLING_JUDGING`, preserved state/evidence, resumed normally; review reject/replay/conflict kept calls `[1,1,1]`. Ruff/format/Mypy/diff passed. Rollback: remove annotation storage/routes/test and shared refusal gate; reopen 7.1-7.2; 5.4/6.4 stay pending. |
+| Q/final-live-closeout | PR #58 merged as `b062716`; CI `32744250127` and deploy `32744487659` passed manifest validation, backend/frontend rollout, OpenCode connectivity, internal services and public-host routing. Public `https://reto-movistar.ikigais.app/health` returned HTTP 200 production health JSON; unauthenticated `/api/agents` returned 401. The durable six-CSV run advanced `BILLING_RUNNING` v3→`COMPLETED` v9 after restart with exactly eight evidence rows and Judge verdicts Billing RETRY/PASS, Collections PASS, BI PASS; package `c97feed113b6348ea29750580c1bfbf2708338ecdf9f5e7d728f35f99711f35c` was review-ready. Backup `backup-20260824T141756Z` restored non-destructively to fresh target `drill-20260824-141756`: readiness true/0 issues, six identical CSV hashes and the same package digest. Rule `Emitir factura al cliente` remained non-executable and run creation returned 409. Analyst `gabo` acceptance persisted across rollout restart (pod UID `b66e19c5-d79e-4c33-9c11-65b83fe87871`→`97972be7-0fef-41b1-aa91-f7261a514ff4`). Direct kubectl was not rerun because `127.0.0.1:6443` is unavailable in this session. Focused/runtime evidence is the cited live CI/deploy and prior drill; no application tests were rerun for this documentation-only closeout. Rollback: revert only these two SDD files; production release and retained storage remain untouched. |
 
 ## Work Unit A/app1
 

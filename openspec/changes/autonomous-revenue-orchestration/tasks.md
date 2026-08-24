@@ -61,14 +61,14 @@ Selected Feature Branch Chain: app1 targets a draft tracker; each later app PR t
 - [x] 5.1 RED: add `back/tests/end_to_end/test_autonomous_run.py` for upload security, corruption, prompt exclusion, readiness, telemetry, lineage.
 - [x] 5.2 GREEN: harden limits/logging/docs; run pytest, Ruff, Mypy, format, Compose checks.
 - [x] 5.3 Infra RED/GREEN: validate then add retained PV/PVC, UID/GID 1001 mount, one `Recreate` backend, affinity, backup/restore under `K3S_Infra/Movistar`.
-- [ ] 5.4 Verify K3S: six-CSV run, retry, restart, restore, analyst decision, no external effect.
+- [x] 5.4 Verify K3S: six-CSV run, retry, restart, restore, analyst decision, no external effect.
 
 ## Phase 6: Live Readiness Remediation
 
 - [x] 6.1 RED/GREEN: require one stable digest confirmation retry for `REQUIERE_VALIDACION`; changed evidence escalates to `MANUAL_REVIEW`.
 - [x] 6.2 RED/GREEN: add a checksummed one-shot operator checkpoint on the durable PVC and resume without duplicate steps after restart.
 - [x] 6.3 Wire the required `ANALYST_HTPASSWD` secret into the reusable K3S deploy and verify unauthenticated public access is denied.
-- [ ] 6.4 Merge the remediation chain, deploy the immutable release, and complete live task 5.4 evidence.
+- [x] 6.4 Merge the remediation chain, deploy the immutable release, and complete live task 5.4 evidence.
 
 ## Phase 7: Final Verification Remediation (Issue #57)
 
