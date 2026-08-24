@@ -272,6 +272,26 @@ class RunOrchestrator:
             ).fetchall()
         return tuple(row["phase"] + (":judge" if row["kind"] == "judge" else "") for row in rows)
 
+    def evidence(self, run_id: str) -> tuple[dict[str, object], ...]:
+        """Return immutable committed specialist and Judge contents in order."""
+        self.get_run(run_id)
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT seq,kind,phase,attempt,payload FROM run_steps "
+                "WHERE run_id = ? ORDER BY seq",
+                (run_id,),
+            ).fetchall()
+        return tuple(
+            {
+                "sequence": row["seq"],
+                "kind": row["kind"],
+                "phase": row["phase"],
+                "attempt": row["attempt"],
+                "content": json.loads(row["payload"]),
+            }
+            for row in rows
+        )
+
     def assemble_review_package(self, run_id: str, storage: StorageHardener) -> Artifact:
         """Assemble terminal evidence or durably escalate incomplete completed lineage."""
         try:

@@ -108,4 +108,4 @@ restores the prior image while retaining/exporting the PVC.
 ## Open Questions
 
 - [ ] Confirm local-PV node hostname/path, capacity, backup destination, retention, and restore RPO/RTO.
-- [ ] Select the trusted analyst identity source for final-review audit records.
+- [x] Trust the proxy/SSO `X-Forwarded-User` claim; ingress strips client values and overwrites this header.
