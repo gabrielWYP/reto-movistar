@@ -31,7 +31,7 @@
           <a href="/agents/collections/index.html"><span aria-hidden="true">$</span> Cobranzas</a>
           <a href="/bi/"><span aria-hidden="true">▥</span> BI</a>
         </nav>
-        <div class="rail-status"><span class="live-dot" aria-hidden="true"></span><span><strong>Entorno activo</strong><small>Journey demostrativo</small></span></div>
+        <div class="rail-status"><span class="live-dot" aria-hidden="true"></span><span><strong>Entorno activo</strong><small>Orquestación autónoma</small></span></div>
       </aside>
 
       <div class="sonia-app">
@@ -46,7 +46,7 @@
 
       <div class="topbar-center" aria-label="Estado de la plataforma">
         <span class="live-dot" aria-hidden="true"></span>
-        <span>Journey demostrativo controlado</span>
+        <span>Flujo autónomo auditable</span>
         <span class="divider" aria-hidden="true"></span>
         <span>Tres especialistas disponibles</span>
       </div>
@@ -68,9 +68,9 @@
           <p class="eyebrow">Supervisor · Revenue Operations</p>
           <h1 id="page-title">El ciclo de ingreso,<br /><em>bajo control.</em></h1>
           <p class="hero-description">
-            Un punto central para recorrer Facturación, Cobranzas y BI con evidencia y decisiones humanas visibles.
+            Publica los datos y reglas una vez; SON-IA ejecuta Facturación, Cobranzas y BI con Judge gates.
           </p>
-          <span class="demo-disclaimer">Journey E2E controlado · datos ficticios · sin ejecución autónoma</span>
+          <span class="demo-disclaimer">Análisis autónomo · solo lectura · una validación humana final</span>
         </div>
 
         <div class="hero-signal" aria-label="Resumen de actividad">
@@ -120,33 +120,33 @@
       <section class="journey-panel" aria-labelledby="journey-title">
         <div class="section-heading compact">
           <div>
-            <p class="eyebrow">Flujo supervisado</p>
-            <h2 id="journey-title">Journey E2E del ingreso</h2>
+            <p class="eyebrow">Ejecución secuencial</p>
+            <h2 id="journey-title">Facturación → Judge → Cobranzas → Judge → BI → Judge</h2>
           </div>
           <span class="pill neutral">Datos 100% ficticios</span>
         </div>
 
         <ol class="journey" aria-label="Progreso del caso">
-          <li data-step-state="VALIDATING">
-            <span class="step-index">01</span><span>Validación PxQ</span>
+          <li data-step-state="BILLING_RUNNING">
+            <span class="step-index">01</span><span>Facturación</span>
           </li>
-          <li data-step-state="NEEDS_APPROVAL">
-            <span class="step-index">02</span><span>Aprobación</span>
+          <li data-step-state="BILLING_JUDGING">
+            <span class="step-index">02</span><span>Judge Billing</span>
           </li>
-          <li data-step-state="ISSUED">
-            <span class="step-index">03</span><span>Emisión</span>
+          <li data-step-state="COLLECTIONS_RUNNING">
+            <span class="step-index">03</span><span>Cobranzas</span>
           </li>
-          <li data-step-state="PAYMENT_DETECTED">
-            <span class="step-index">04</span><span>Pago detectado</span>
+          <li data-step-state="COLLECTIONS_JUDGING">
+            <span class="step-index">04</span><span>Judge Cobranzas</span>
           </li>
-          <li data-step-state="RECONCILING">
-            <span class="step-index">05</span><span>Conciliación</span>
+          <li data-step-state="BI_RUNNING">
+            <span class="step-index">05</span><span>BI</span>
           </li>
-          <li data-step-state="ANALYZING">
-            <span class="step-index">06</span><span>Indicadores BI</span>
+          <li data-step-state="BI_JUDGING">
+            <span class="step-index">06</span><span>Judge BI</span>
           </li>
-          <li data-step-state="CLOSED">
-            <span class="step-index">07</span><span>Cierre</span>
+          <li data-step-state="COMPLETED">
+            <span class="step-index">07</span><span>Paquete final</span>
           </li>
         </ol>
         <div class="progress-track" aria-hidden="true">
@@ -154,7 +154,7 @@
         </div>
       </section>
 
-      <section class="agent-section" aria-labelledby="agents-title">
+      <section class="agent-section" aria-labelledby="agents-title" hidden>
         <div class="section-heading">
           <div>
             <p class="eyebrow">Equipo agéntico</p>
@@ -167,8 +167,8 @@
       </section>
 
       <section class="operations-grid">
-        <article class="case-card" aria-labelledby="case-title">
-          <div class="card-header">
+        <article id="rule-card" class="case-card" aria-labelledby="case-title" hidden>
+          <div class="card-header" hidden>
             <div>
               <p class="eyebrow">Expediente activo</p>
               <h2 id="case-title">Caso <span id="case-id">—</span></h2>
@@ -176,7 +176,7 @@
             <span id="case-status" class="status-chip">Cargando</span>
           </div>
 
-          <div class="case-summary">
+          <div class="case-summary" hidden>
             <div class="case-customer">
               <span class="company-mark" aria-hidden="true">AL</span>
               <div>
@@ -192,24 +192,25 @@
             </div>
           </div>
 
-          <div class="evidence-strip">
+          <div class="evidence-strip" hidden>
             <div><span>Fuente</span><strong>PxQ_DEMO_031.csv</strong></div>
             <div><span>Campos críticos</span><strong>5 / 5</strong></div>
             <div><span>Reglas</span><strong>3 aprobadas</strong></div>
             <div><span>Riesgo</span><strong class="risk-low">Bajo</strong></div>
           </div>
 
-          <div class="agent-inspector">
+          <form id="rules-form" class="agent-inspector" hidden>
             <div class="inspector-heading">
               <div>
-                <span id="inspector-kicker" class="field-label">Agente activo</span>
-                <h3 id="inspector-name">—</h3>
+                <span id="inspector-kicker" class="field-label">Reglas trazables</span>
+                <h3 id="inspector-name">Preguntas de negocio</h3>
               </div>
-              <span id="inspector-confidence" class="confidence">—</span>
+              <span id="inspector-confidence" class="confidence">Dataset publicado</span>
             </div>
-            <p id="inspector-summary">Cargando detalle del agente…</p>
-            <ul id="inspector-findings" class="finding-list"></ul>
-          </div>
+            <p id="inspector-summary">Responde las reglas globales y de cada especialista.</p>
+            <div id="rule-questions" class="rule-questions"></div>
+            <button id="start-run" class="primary-action" type="submit">Crear y ejecutar análisis</button>
+          </form>
         </article>
 
         <aside class="supervisor-card" aria-labelledby="supervisor-title">
@@ -221,20 +222,8 @@
             </div>
           </div>
 
-          <div class="next-action">
-            <span class="field-label">Siguiente acción recomendada</span>
-            <h3 id="next-title">Preparando el caso</h3>
-            <p id="next-description">El supervisor está cargando las reglas del journey.</p>
-            <button id="primary-action" class="primary-action" type="button" disabled>
-              <span id="action-label">Cargando…</span>
-              <span aria-hidden="true">→</span>
-            </button>
-            <button id="reset-action" class="secondary-action" type="button" hidden>
-              Reiniciar demo
-            </button>
-            <p id="human-gate" class="human-gate" hidden>
-              <span aria-hidden="true">◆</span> Esta acción requiere confirmación humana.
-            </p>
+          <div class="next-action" id="run-progress" aria-live="polite" aria-busy="false">
+            Publica el dataset y completa las reglas para iniciar.
           </div>
 
           <div class="timeline-block">
@@ -243,11 +232,24 @@
               <span>Auditable</span>
             </div>
             <ol id="timeline" class="timeline"></ol>
+            <pre id="judge-history" class="evidence-output" aria-label="Historial Judge"></pre>
+            <pre id="evidence-output" class="evidence-output" aria-label="Evidencia de especialistas"></pre>
+            <pre id="package-output" class="evidence-output" aria-label="Paquete final"></pre>
           </div>
+          <form id="review-form" class="review-form" hidden>
+            <h3>Validación final</h3>
+            <fieldset>
+              <label>Decisión <select id="review-outcome" name="outcome"><option value="accept">Aceptar</option><option value="reject">Rechazar</option></select></label>
+              <label>Motivo de rechazo <textarea id="review-reason" name="reason" maxlength="500"></textarea></label>
+              <label>Anotación <textarea id="review-annotation" name="annotation" maxlength="1000"></textarea></label>
+              <button class="primary-action" type="submit">Registrar decisión final</button>
+            </fieldset>
+            <p id="review-status" aria-live="polite"></p>
+          </form>
         </aside>
       </section>
 
-      <section class="metric-grid" aria-label="Métricas de impacto">
+      <section class="metric-grid" aria-label="Métricas de impacto" hidden>
         <article>
           <span>Tiempo estimado</span><strong id="metric-time">—</strong><small>ciclo demo</small>
         </article>
@@ -265,7 +267,7 @@
 
     <footer>
       <span>SON-IA · Desafío 3</span>
-      <span>Prototipo demostrativo · Sin datos reales</span>
+      <span>Análisis autónomo de solo lectura</span>
     </footer>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
