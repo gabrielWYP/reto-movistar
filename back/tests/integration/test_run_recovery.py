@@ -1,5 +1,7 @@
 """Durable runner recovery, idempotency, sequencing, and ownership scenarios."""
 
+import json
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +51,22 @@ def _runner(
     return RunOrchestrator(
         root / "db/sonia.sqlite3", intake, adapters, judge or Judge(), owner=owner
     ), probes
+
+
+def _checkpoint(root: Path, path_run_id: str, default_target: str, **changes: str) -> Path:
+    payload = {
+        "schema": "sonia.operator-checkpoint/v1",
+        "request_id": "restart-proof",
+        "run_id": path_run_id,
+        "target_state": default_target,
+    }
+    payload |= changes
+    digest = sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    payload["sha256"] = changes.get("sha256", digest)
+    path = root / "checkpoints" / f"{path_run_id}.request.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload))
+    return path
 
 
 def test_creation_and_commands_are_revision_bound_and_digest_idempotent(tmp_path: Path) -> None:
@@ -130,3 +148,96 @@ def test_retry_is_bounded_and_storage_loss_freezes_recovery(tmp_path: Path) -> N
     runner.database.rename(runner.database.with_suffix(".unavailable"))
     with pytest.raises(RuntimeError, match="storage unavailable"):
         runner.get_run(run.run_id)
+
+
+@pytest.mark.parametrize(
+    ("changed", "expected_state", "expected_steps"),
+    [(False, RunState.COMPLETED, 8), (True, RunState.MANUAL_REVIEW, 4)],
+)
+def test_validation_required_confirms_stable_digest_without_third_attempt(
+    tmp_path: Path, changed: bool, expected_state: RunState, expected_steps: int
+) -> None:
+    intake, dataset, ruleset, _ = _intake(tmp_path)
+    probes = {phase: Probe(phase) for phase in SpecialistPhase}
+
+    def billing(at: str) -> dict[str, Any]:
+        probe = probes[SpecialistPhase.BILLING]
+        probe.calls += 1
+        revision = probe.calls if changed else 1
+        return {
+            "agent": "billing",
+            "status": "REQUIERE_VALIDACION",
+            "data_quality": {"date": at},
+            "revision": revision,
+        }
+
+    adapters = {
+        SpecialistPhase.BILLING: SpecialistAdapter(SpecialistPhase.BILLING, billing),
+        **{
+            phase: SpecialistAdapter(phase, probes[phase])
+            for phase in (SpecialistPhase.COLLECTIONS, SpecialistPhase.BI)
+        },
+    }
+    runner = RunOrchestrator(
+        tmp_path / "db/sonia.sqlite3", intake, adapters, Judge(), owner="confirm"
+    )
+    run = runner.create_run(dataset, ruleset, "create-confirmation")
+    completed = runner.run(run.run_id, "confirmation")
+
+    assert completed.state is expected_state
+    assert len(runner.history(run.run_id)) == expected_steps
+    assert probes[SpecialistPhase.BILLING].calls == 2
+
+
+def test_operator_checkpoint_pauses_once_and_restart_resumes_without_duplicates(
+    tmp_path: Path,
+) -> None:
+    _, dataset, ruleset, _ = _intake(tmp_path)
+    runner, probes = _runner(tmp_path)
+    created = runner.create_run(dataset, ruleset, "create")
+    runner.start(created.run_id, "start")
+    request = _checkpoint(tmp_path, created.run_id, "BILLING_JUDGING")
+
+    paused = runner.run(created.run_id, "background:start")
+
+    assert paused.state is RunState.BILLING_JUDGING
+    assert runner.history(created.run_id) == ("billing",)
+    assert not request.exists()
+    audits = tuple((tmp_path / "checkpoints/consumed").glob("*.json"))
+    assert len(audits) == 1 and json.loads(audits[0].read_text())["run_id"] == created.run_id
+    reopened = RunOrchestrator(
+        runner.database, runner.intake, runner.adapters, Judge(), owner="restarted"
+    )
+    resumed = reopened.start(created.run_id, "start")
+    assert resumed.state is RunState.BILLING_JUDGING
+    completed = reopened.run(created.run_id, "background:start")
+    assert completed.state is RunState.COMPLETED
+    assert [probes[phase].calls for phase in SpecialistPhase] == [1, 1, 1]
+
+
+@pytest.mark.parametrize("invalid", ["corrupt", "symlink", "run", "digest", "state"])
+def test_invalid_operator_checkpoint_freezes_before_advancement(
+    tmp_path: Path, invalid: str
+) -> None:
+    _, dataset, ruleset, _ = _intake(tmp_path)
+    runner, probes = _runner(tmp_path)
+    created = runner.create_run(dataset, ruleset, "create")
+    changes = {
+        "run": {"run_id": "run_wrong"},
+        "digest": {"sha256": "0" * 64},
+        "state": {"target_state": "COMPLETED"},
+    }.get(invalid, {})
+    request = _checkpoint(tmp_path, created.run_id, "BILLING_JUDGING", **changes)
+    if invalid == "corrupt":
+        request.write_text("{")
+    elif invalid == "symlink":
+        valid = request.with_name("operator-provided.json")
+        request.replace(valid)
+        request.symlink_to(valid)
+
+    with pytest.raises(RuntimeError, match="checkpoint"):
+        runner.run(created.run_id, "blocked")
+
+    assert runner.get_run(created.run_id).state is RunState.CREATED
+    assert probes[SpecialistPhase.BILLING].calls == 0
+    assert request.exists()

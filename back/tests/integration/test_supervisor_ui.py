@@ -73,9 +73,14 @@ def test_ui_request_contract_reaches_terminal_evidence(tmp_path: Path) -> None:
         started.status_code == 202
         and client.get(f"/api/supervisor/runs/{run}").json()["state"] == "COMPLETED"
     )
-    assert [(item["phase"], item["kind"]) for item in evidence] == [
-        (phase, kind)
-        for phase in ("billing", "collections", "bi")
-        for kind in ("specialist", "judge")
+    assert [(item["phase"], item["kind"], item["attempt"]) for item in evidence] == [
+        ("billing", "specialist", 1),
+        ("billing", "judge", 1),
+        ("billing", "specialist", 2),
+        ("billing", "judge", 2),
+        ("collections", "specialist", 1),
+        ("collections", "judge", 1),
+        ("bi", "specialist", 1),
+        ("bi", "judge", 1),
     ]
     assert all(item["content"] for item in evidence)

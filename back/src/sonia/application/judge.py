@@ -17,6 +17,21 @@ QualitativeEvaluator = Callable[
     [SpecialistResult], tuple[tuple[ValidationCheck, ...], ExecutionMetadata]
 ]
 _NON_RETRYABLE = {"lineage", "schema", "input_binding"}
+_CONFIRMATION_STATUSES = {"REQUIERE_VALIDACION"}
+
+
+def _output_digest(result: SpecialistResult | None) -> str | None:
+    if result is None:
+        return None
+    marker = f":{result.phase}:attempt={result.attempt}:"
+    return next(
+        (
+            item.sha256
+            for item in result.evidence_refs
+            if marker in item.evidence_id and item.evidence_id.endswith(":result")
+        ),
+        None,
+    )
 
 
 class Judge:
@@ -37,7 +52,9 @@ class Judge:
         """Return decisions in evaluation order without exposing mutation."""
         return tuple(self._history)
 
-    def evaluate(self, result: SpecialistResult) -> JudgeDecision:
+    def evaluate(
+        self, result: SpecialistResult, *, previous: SpecialistResult | None = None
+    ) -> JudgeDecision:
         """Evaluate hard gates before any optional qualitative provider."""
         evidence_ids = {item.evidence_id for item in result.evidence_refs}
         linked = all(
@@ -49,7 +66,29 @@ class Judge:
             passed=linked,
             detail="all findings linked" if linked else "missing evidence",
         )
-        hard_checks = result.validation_checks + (lineage,)
+        confirmation: tuple[ValidationCheck, ...] = ()
+        if result.status in _CONFIRMATION_STATUSES:
+            stable = (
+                result.attempt == 2
+                and previous is not None
+                and previous.phase is result.phase
+                and previous.attempt == 1
+                and previous.status == result.status
+                and _output_digest(previous) is not None
+                and _output_digest(previous) == _output_digest(result)
+            )
+            confirmation = (
+                ValidationCheck(
+                    name="status_confirmation",
+                    passed=stable,
+                    detail=(
+                        "stable normalized result digest"
+                        if stable
+                        else "deterministic result confirmation required"
+                    ),
+                ),
+            )
+        hard_checks = result.validation_checks + confirmation + (lineage,)
         failed = tuple(check for check in hard_checks if check.required and not check.passed)
         rubric: tuple[ValidationCheck, ...] = ()
         mode = JudgeMode.DETERMINISTIC

@@ -23,6 +23,7 @@ from sonia.domain.orchestration import (
     SpecialistResult,
 )
 from sonia.persistence.backup import Artifact, PackageLineageError, StorageHardener
+from sonia.persistence.operator_checkpoint import OperatorCheckpointStore
 from sonia.persistence.sqlite import SQLiteIntakeRepository
 
 _LOG = logging.getLogger(__name__)
@@ -61,11 +62,13 @@ class RunOrchestrator:
         lease_seconds: float = 30.0,
         storage_guard: Callable[[], None] | None = None,
         auto_package: bool = True,
+        checkpoint_store: OperatorCheckpointStore | None = None,
     ) -> None:
         self.database, self.intake = database.resolve(), intake
         self.adapters, self.judge = adapters, judge
         self.owner, self.lease_seconds = owner, lease_seconds
         self.storage_guard = storage_guard
+        self.checkpoints = checkpoint_store or OperatorCheckpointStore(self.database.parent.parent)
         self.package_storage = (
             StorageHardener(self.database.parent.parent) if auto_package else None
         )
@@ -147,10 +150,12 @@ class RunOrchestrator:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             replay = self._replay(connection, key, digest)
+            current = self._load(connection, run_id)
             if replay:
-                return replay
-            run = self._load(connection, run_id)
-            started = run.transition_to(RunState.BILLING_RUNNING)
+                return current if current.state is not RunState.CREATED else replay
+            if current.state is not RunState.CREATED:
+                return current
+            started = current.transition_to(RunState.BILLING_RUNNING)
             connection.execute(_UPDATE, (started.model_dump_json(), run_id))
             connection.execute(_COMMAND, (key, digest, started.model_dump_json()))
         return started
@@ -213,7 +218,10 @@ class RunOrchestrator:
             if not expected.endswith("_JUDGING"):
                 raise ValueError(f"State {expected} cannot advance")
             phase = SpecialistPhase(expected.removesuffix("_JUDGING").lower())
-            step = self.judge.evaluate(self._results(run_id)[-1])
+            results = self._results(run_id)
+            current_result = results[-1]
+            previous = next((item for item in reversed(results[:-1]) if item.phase is phase), None)
+            step = self.judge.evaluate(current_result, previous=previous)
             state = (
                 _AFTER_PASS[expected]
                 if step.verdict is JudgeVerdict.PASS
@@ -257,6 +265,14 @@ class RunOrchestrator:
         """Provide a bounded callable suitable for a supervised background task."""
         for _ in range(max_steps):
             current = self.get_run(run_id)
+            if self.checkpoints.consume_at_target(current):
+                with self._connect() as connection:
+                    connection.execute(
+                        "UPDATE runs SET lease_owner=NULL,lease_expires=0 "
+                        "WHERE run_id=? AND lease_owner=?",
+                        (run_id, self.owner),
+                    )
+                return current
             if current.state in (RunState.COMPLETED, RunState.MANUAL_REVIEW):
                 if self.package_storage and not current.manual_reason:
                     self.assemble_review_package(run_id, self.package_storage)

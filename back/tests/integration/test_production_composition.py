@@ -69,10 +69,21 @@ def test_default_app_composes_durable_intake_run_evidence_and_review(tmp_path: P
     evidence = client.get(f"{RUNS}/{run_id}/evidence")
     assert evidence.status_code == 200
     steps = evidence.json()["evidence"]
-    assert [(item["phase"], item["kind"]) for item in steps] == [
-        (phase, kind)
-        for phase in ("billing", "collections", "bi")
-        for kind in ("specialist", "judge")
+    assert [(item["phase"], item["kind"], item["attempt"]) for item in steps] == [
+        ("billing", "specialist", 1),
+        ("billing", "judge", 1),
+        ("billing", "specialist", 2),
+        ("billing", "judge", 2),
+        ("collections", "specialist", 1),
+        ("collections", "judge", 1),
+        ("bi", "specialist", 1),
+        ("bi", "judge", 1),
+    ]
+    assert [item["content"].get("verdict") for item in steps if item["kind"] == "judge"] == [
+        "RETRY",
+        "PASS",
+        "PASS",
+        "PASS",
     ]
     assert steps[0]["content"]["evidence_refs"] and steps[-1]["content"]["verdict"] == "PASS"
     package = client.get(f"{RUNS}/{run_id}/package").json()

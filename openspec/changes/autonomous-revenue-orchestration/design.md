@@ -56,10 +56,22 @@ COMPLETED`; a first retryable verdict returns only to the same phase, and any te
 `MANUAL_REVIEW`. Commands bind idempotency key to digest. `BEGIN IMMEDIATE` renews
 `lease_owner/lease_expires_at`; competing owners are read-only.
 
+`REQUIERE_VALIDACION` is a retryable deterministic confirmation gate: attempt one emits RETRY;
+attempt two may PASS only when the current phase/attempt output evidence digest is identical to
+attempt one. Changed or missing evidence escalates to MANUAL_REVIEW, preserving the two-attempt bound.
+
+Operator-controlled restart verification uses no endpoint or timer. A canonical
+`checkpoints/<run_id>.request.json` envelope binds schema, request ID, run ID, legal target state, and
+SHA-256. Before each advance, `run()` validates the fixed contained path and consumes a matching target
+with atomic rename into `checkpoints/consumed/<digest>.json`, fsyncs both directories, releases its lease,
+and returns the committed snapshot. Corrupt, symlinked, cross-run, invalid-digest, stale, or illegal-state
+requests remain in place and freeze advancement. Replaying `POST /start` on an active run returns the
+current snapshot and schedules continuation from its durable version without duplicating committed steps.
+
 ## Persistence, Recovery, and Contracts
 
 `/var/lib/sonia` contains `db/sonia.sqlite3`, `datasets/<revision>/<sha256>.csv`,
-`evidence/<run>/<phase>/<attempt>/<sha256>.json`, and `packages/<revision>.json`. Writes use a same-directory
+`evidence/<run>/<phase>/<attempt>/<sha256>.json`, `checkpoints/`, and `packages/<revision>.json`. Writes use a same-directory
 temporary file, `fsync`, checksum, then rename. One transaction records reference, snapshot, event, and
 idempotency result; orphaned files are quarantined. Startup verifies checksums, expires leases, and resumes
 from the last commit. Missing/corrupt storage fails readiness, freezes runs, and requires operator recovery.
