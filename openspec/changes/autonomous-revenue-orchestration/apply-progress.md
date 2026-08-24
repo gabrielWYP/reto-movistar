@@ -3,9 +3,9 @@
 ## Cumulative Status
 
 - Mode: Strict TDD; delivery: Feature Branch Chain.
-- Completed: 22/25 tasks; remaining: live K3S 5.4 and remediation 6.3-6.4.
-- Current branch: `feature/autonomous-revenue-orchestration-14-operator-checkpoint`.
-- Intended base: `feature/autonomous-revenue-orchestration-13-retry-confirmation`.
+- Completed: 23/25 tasks; remaining: live K3S 5.4 and remediation deployment 6.4.
+- Current branch: `feature/autonomous-revenue-orchestration-15-deploy-auth`.
+- Intended base: `feature/autonomous-revenue-orchestration-14-operator-checkpoint`.
 
 ## TDD Cycle Evidence
 
@@ -22,6 +22,7 @@
 | 0.1, 5.3 | Safety net rendered 2 Deployments/2 Services; RED failed `missing: name: sonia-live`; restore correction RED rejected `/unused-live` lineage anchor | Storage contract GREEN; Kustomize and 13-resource kubeconform pass | Live/backup PVs, Recreate/readiness, exact retention boundary, fresh restore target, unchanged front | Direct operation-file checks and CI schema validation for the non-rendered restore template |
 | Slice A / 5.4 prerequisite | Unit RED: 1 failed/3 passed because `Judge.evaluate` lacked prior-result confirmation; integration triangulation caught an upstream-evidence false match | Focused Judge/adapters/recovery: 12 passed; proportional regression: 35 passed | Stable Billing digest completes with eight steps; changed digest enters MANUAL_REVIEW after four steps/two attempts | Output selection now binds phase and attempt before comparing digests; 5.4 remains pending live verification |
 | 6.2 / Slice B | Checkpoint RED: 6 failed; active-start RED returned stale `BILLING_RUNNING`, and router harness exposed missing state wiring | Focused checkpoint/router: 7 passed; recovery: 12 passed | One-shot pause/restart plus corrupt, symlink, cross-run, invalid digest and illegal state freeze | Extracted typed checkpoint store; atomic audit rename/fsync and lease release preserve restart boundary |
+| 6.3 / Slice C | Contract RED: 1 failed because the reusable deploy caller forwarded no analyst roster | Focused contract: 1 passed | Exact required secret mapping is present once under the reusable deploy job | Caller-only passthrough; roster reconciliation and BasicAuth enforcement remain owned by K3S Infra |
 
 ## Work Unit Evidence
 
@@ -44,6 +45,7 @@
 | K/app11-k3s | Focused `bash Movistar/tests/validate-autonomous-storage.sh`: PASS; `kubectl kustomize Movistar`: 2 Deployments, 2 Services, 2 PVs, 2 PVCs, 1 CronJob; kubeconform: 13 valid/0 invalid/0 errors; PyYAML 12 files and both repos `git diff --check` passed. Live `kubectl get nodes --request-timeout=5s` blocked: `127.0.0.1:6443 was refused`, so 5.4 remains open. Rollback: revert app design/tasks/progress and infra storage/operations/workload/kustomization/workflow files; retained PV data must be preserved/exported, not deleted. |
 | L/app13-retry-confirmation | Focused 12 passed; combined Judge/adapters/recovery/package/storage/E2E 35 passed. Real six-CSV runtime completed eight ordered steps with Judge verdicts Billing RETRY/PASS, Collections PASS, BI PASS and a valid package. Ruff/format/Mypy/diff passed; TestClient composition remains subject to the documented WSL/OneDrive stall. Rollback: revert Judge prior-result gate, orchestrator binding, retry tests/docs; task 5.4 stays open. |
 | M/app14-operator-checkpoint | Focused checkpoint/direct-router harness: 7 passed; isolated proportional regression: 42 passed (recovery 12, Judge/adapters/package/storage 17, E2E 12, direct router 1). Runtime paused after committed Billing, atomically archived one request, reopened with a new owner, replayed start from `BILLING_JUDGING`, and completed with Billing called once. Invalid requests froze before any specialist call. HTTP TestClient transport stalled and was replaced by the direct real router harness. Ruff/format/Mypy/diff passed. Rollback: remove `operator_checkpoint.py`, revert runner/start hooks, tests/docs and reopen 6.2; 5.4 stays open. |
+| N/app15-deploy-auth | Focused `.venv-py312/bin/pytest -q -s back/tests/integration/test_deploy_auth_contract.py`: 1 passed. Workflow YAML/action syntax and diff passed. Runtime deployment is deferred to 6.4; K3S Infra declares the secret required and reconciles its BasicAuth roster. Rollback: remove only the caller mapping/test and reopen 6.3. |
 
 ## Work Unit A/app1
 
