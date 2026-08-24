@@ -3,9 +3,9 @@
 ## Cumulative Status
 
 - Mode: Strict TDD; delivery: Feature Branch Chain.
-- Completed: 0.2, 1.1-4.2 (14/21); remaining: gate 0.1 and tasks 4.3-5.4.
-- Current branch: `feature/autonomous-revenue-orchestration-08-production-composition`.
-- Intended base: `feature/autonomous-revenue-orchestration-07-run-api-review`.
+- Completed: gates 0.1-0.2 and tasks 1.1-5.3 (20/21); remaining: live K3S task 5.4.
+- Current branch: `feature/autonomous-revenue-orchestration-11-k3s`.
+- Intended base: `feature/autonomous-revenue-orchestration-10-hardening-e2e`; infra dependency: `feature/movistar-autonomous-storage`.
 
 ## TDD Cycle Evidence
 
@@ -17,6 +17,9 @@
 | 3.1-3.2 | Missing module; correction RED: retry-then-pass exceeded bound 8 | GREEN: 4 passed; correction passed with bound 13 | Replays/conflicts, sequence, restart, owners, retry/pass, retry/manual, storage loss | Compact transactional runner; focused green |
 | 3.3 | Missing symbols; correction REDs covered backup/reason, terminal auto-package, reopen and repeated-direct version drift | Storage 6 passed; package 5 passed in 1.98s | Exact backup, corrupt freeze, durable reason/version idempotency, automatic terminal packages, explicit corruption harness | Formatted split; combined 21 passed |
 | 0.2, 4.1-4.2 | Initial 4 failed without wiring; app8 RED: 2 failed without `storage_root` | Core router/DI plus production composition GREEN: 6 focused passed | Durable intake/run/reopen, dynamic adapters, evidence/review reads, whitespace fail-closed | Shared helpers and immutable typed responses; combined 11 passed |
+| 4.3-4.4 | UI RED: 1 failed/1 passed without autonomous controls | Focused GREEN: 3 passed | Static accessibility/read-only boundary plus real six-step terminal API journey | Removed runtime demo calls; Node syntax and focused regression passed |
+| 5.1-5.2 | Import RED; triangulation 2 failed/6 passed; review REDs: 2 failed then physical-row 1 failed | Focused GREEN: 12 passed | CSV/ZIP limits, localized negatives, sanitized 503, prompt exclusion, lineage and telemetry | Preserved one safe ZIP wrapper, bounded nesting, fixed recovery semantics; combined 32 passed |
+| 0.1, 5.3 | Safety net rendered 2 Deployments/2 Services; RED failed `missing: name: sonia-live`; restore correction RED rejected `/unused-live` lineage anchor | Storage contract GREEN; Kustomize and 13-resource kubeconform pass | Live/backup PVs, Recreate/readiness, exact retention boundary, fresh restore target, unchanged front | Direct operation-file checks and CI schema validation for the non-rendered restore template |
 
 ## Work Unit Evidence
 
@@ -34,6 +37,9 @@
 | F/app6-package | Focused 5 passed in 1.98s; combined 21 passed in 3.42s. Runtime autonomous completed+manual packages: 2 passed in 1.34s. Ruff/format/Mypy/diff passed. Rollback: remove package validator/assembler, auto-trigger/escalation/manual reason and package test; reopen 3.3. |
 | G/app7-run-api partial | Focused `.venv-py312/bin/pytest -q -s back/tests/integration/test_run_api.py`: 4 passed; combined durable: 24 passed; final Supervisor/API regression: 14 passed; TestClient harness `.venv-py312/bin/pytest -q -s back/tests/integration/test_run_api.py::test_completed_review_is_append_only_and_digest_idempotent`: 1 passed. Core router/DI/review store is proven; production composition, dataset/questions/ruleset routes and evidence content/review retrieval move to the immediate child slice. Ruff/format/Mypy/diff passed. Rollback: remove `run_api.py`/test, revert optional `api.py` injection and 0.2/4.1. |
 | H/app8-production-composition | Focused TestClient: 2 passed; combined API/Supervisor regression: 11 passed. Runtime flow published six CSVs, created rules/run, completed all six steps, read package/evidence/review, then reopened SQLite successfully. Ruff/format/Mypy/diff passed. Rollback: revert default composition, intake/evidence/review routes, storage setting/Docker ownership, test, design decision and task 4.2. |
+| I/app9-supervisor-ui | Focused/runtime `.venv-py312/bin/pytest -q -s back/tests/integration/test_supervisor_ui.py`: 3 passed, including real dataset→rules→202 start→COMPLETED with six evidence records; `node --check front/assets/app.js` passed. Chromium snap could not reach the WSL-local server, so no browser claim is made. Rollback: revert the three Supervisor frontend files, remove the UI test, reopen 4.3-4.4. |
+| J/app10-hardening-e2e | Focused/runtime `.venv-py312/bin/pytest -q -s back/tests/end_to_end/test_autonomous_run.py`: 12 passed; real app completed six steps/package and ASGI readiness returned 503 after dataset corruption. Combined non-TestClient regression: 32 passed. Ruff/format/Mypy/Compose/diff passed. Rollback: remove E2E test and revert validation, `/ready`, upload-path and orchestration-log changes; reopen 5.1-5.2. |
+| K/app11-k3s | Focused `bash Movistar/tests/validate-autonomous-storage.sh`: PASS; `kubectl kustomize Movistar`: 2 Deployments, 2 Services, 2 PVs, 2 PVCs, 1 CronJob; kubeconform: 13 valid/0 invalid/0 errors; PyYAML 12 files and both repos `git diff --check` passed. Live `kubectl get nodes --request-timeout=5s` blocked: `127.0.0.1:6443 was refused`, so 5.4 remains open. Rollback: revert app design/tasks/progress and infra storage/operations/workload/kustomization/workflow files; retained PV data must be preserved/exported, not deleted. |
 
 ## Work Unit A/app1
 

@@ -26,7 +26,7 @@ Selected Feature Branch Chain: app1 targets a draft tracker; each later app PR t
 
 ## Phase 0: Pre-apply Gates
 
-- [ ] 0.1 Record PV hostname/path/capacity, backup target/retention, and RPO/RTO before H.
+- [x] 0.1 Record PV hostname/path/capacity, backup target/retention, and RPO/RTO before H.
 - [x] 0.2 Select trusted analyst identity and immutable audit fields before E.
 
 ## Phase 1: Domain and Intake
@@ -53,12 +53,12 @@ Selected Feature Branch Chain: app1 targets a draft tracker; each later app PR t
 
 - [x] 4.1 RED: add `back/tests/integration/test_run_api.py` for Runs/Final Review API scenarios.
 - [x] 4.2 GREEN: create `entrypoints/run_api.py`; wire `api.py`, identity, conflicts/review routes; REFACTOR OpenAPI docs.
-- [ ] 4.3 RED: add `back/tests/integration/test_supervisor_ui.py` for intake→progress→Judge→one decision and read-only tabs.
-- [ ] 4.4 GREEN: replace demo in `front/index.html`, `assets/app.js`, `assets/app.css`; REFACTOR accessible polling/manual-review/docs.
+- [x] 4.3 RED: add `back/tests/integration/test_supervisor_ui.py` for intake→progress→Judge→one decision and read-only tabs.
+- [x] 4.4 GREEN: replace demo in `front/index.html`, `assets/app.js`, `assets/app.css`; REFACTOR accessible polling/manual-review/docs.
 
 ## Phase 5: Operations
 
-- [ ] 5.1 RED: add `back/tests/end_to_end/test_autonomous_run.py` for upload security, corruption, prompt exclusion, readiness, telemetry, lineage.
-- [ ] 5.2 GREEN: harden limits/logging/docs; run pytest, Ruff, Mypy, format, Compose checks.
-- [ ] 5.3 Infra RED/GREEN: validate then add retained PV/PVC, UID/GID 1001 mount, one `Recreate` backend, affinity, backup/restore under `K3S_Infra/Movistar`.
+- [x] 5.1 RED: add `back/tests/end_to_end/test_autonomous_run.py` for upload security, corruption, prompt exclusion, readiness, telemetry, lineage.
+- [x] 5.2 GREEN: harden limits/logging/docs; run pytest, Ruff, Mypy, format, Compose checks.
+- [x] 5.3 Infra RED/GREEN: validate then add retained PV/PVC, UID/GID 1001 mount, one `Recreate` backend, affinity, backup/restore under `K3S_Infra/Movistar`.
 - [ ] 5.4 Verify K3S: six-CSV run, retry, restart, restore, analyst decision, no external effect.

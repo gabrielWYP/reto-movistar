@@ -156,6 +156,19 @@ def create_app(
             environment=runtime_settings.environment,
         )
 
+    @application.get("/ready", tags=["operations"])
+    async def readiness() -> Response:
+        """Fail closed when configured durable storage is unavailable or corrupt."""
+        report = runtime_storage.verify() if runtime_storage is not None else None
+        ready = report is None or report.ready
+        return JSONResponse(
+            {
+                "status": "ready" if ready else "storage_unready",
+                "issue_count": len(report.issues) if report is not None else 0,
+            },
+            status_code=200 if ready else 503,
+        )
+
     @application.get("/api/agents", response_model=list[AgentDescriptor], tags=["agents"])
     async def agents() -> tuple[AgentDescriptor, ...]:
         """List the three agents available behind the backend boundary."""
