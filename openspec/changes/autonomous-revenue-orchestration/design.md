@@ -83,6 +83,10 @@ services directly. Hard checks run first; `SONIA_JUDGE_MODEL` separately selects
 the existing `OPENCODE_KEY` contract. Provider failure invokes deterministic fallback. Logs/metrics include
 `run_id`, dataset revision, phase, attempt, verdict, latency, tokens, lease, and recovery outcome.
 
+Production startup rehydrates the latest checksummed Supervisor publication for read-only tabs. Every
+specialist operation then activates its run-bound revision inside one coordinator critical section, so a
+restart or newer publication cannot substitute inputs while Billing, Collections, or BI is executing.
+
 ## API and UI
 
 `POST /api/supervisor/datasets`, `GET /api/supervisor/datasets/{revision}/questions`,

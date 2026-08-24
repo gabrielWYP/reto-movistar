@@ -181,6 +181,29 @@ class SQLiteIntakeRepository:
             ).fetchone()
         return DatasetRevision.model_validate_json(row["payload"]) if row else None
 
+    def latest_dataset(self) -> DatasetRevision | None:
+        """Return the newest durable Supervisor publication, if one exists."""
+        with self._connect() as connection:
+            rows = connection.execute("SELECT payload FROM datasets").fetchall()
+        revisions = tuple(DatasetRevision.model_validate_json(row["payload"]) for row in rows)
+        return max(revisions, key=lambda item: item.created_at, default=None)
+
+    def read_dataset_files(self, revision_id: str) -> dict[str, bytes]:
+        """Read one immutable revision after containment and checksum validation."""
+        revision = self.get_dataset(revision_id)
+        if revision is None:
+            raise KeyError(revision_id)
+        files: dict[str, bytes] = {}
+        for item in revision.files:
+            path = item.path.resolve()
+            if not path.is_relative_to(self._dataset_root) or item.path.is_symlink():
+                raise RuntimeError("Dataset path escapes durable storage")
+            content = path.read_bytes()
+            if sha256(content).hexdigest() != item.sha256:
+                raise RuntimeError("Dataset checksum verification failed")
+            files[item.source] = content
+        return files
+
     def questions(self, revision_id: str) -> tuple[RuleQuestion, ...]:
         """Derive bounded typed questions without exposing raw source rows."""
         dataset = self.get_dataset(revision_id)
