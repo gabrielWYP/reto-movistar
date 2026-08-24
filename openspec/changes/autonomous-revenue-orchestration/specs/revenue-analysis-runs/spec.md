@@ -104,3 +104,23 @@ They MUST NOT issue invoices, apply payments, contact customers, or mutate exter
 - WHEN a specialist evaluates its plan
 - THEN the action is refused
 - AND the refusal is recorded as evidence without performing the effect
+
+### Requirement: Operator-only restart checkpoint
+
+The runner MUST recognize a checksummed, run-bound checkpoint request from durable storage without
+exposing a public API. It MUST consume the request once at the specified committed state, return that
+snapshot before another step, and permit a subsequent start replay to resume without duplicate work.
+
+#### Scenario: Pause after a committed specialist step
+
+- GIVEN an operator has placed a valid checkpoint for Billing judging on the durable PVC
+- WHEN Billing output is committed and the runner observes the target state
+- THEN it atomically archives the request as audit evidence and returns Billing judging
+- AND replaying start after restart resumes with the Judge without executing Billing again
+
+#### Scenario: Reject an untrusted checkpoint
+
+- GIVEN a checkpoint is corrupt, symlinked, bound to another run, has an invalid digest, or names an illegal state
+- WHEN the runner observes the request before its next advance
+- THEN it fails closed without consuming the request
+- AND the committed run state and specialist history remain unchanged

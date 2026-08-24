@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 
+from fastapi import BackgroundTasks
 from fastapi.testclient import TestClient
 
 from sonia.application.judge import Judge
@@ -9,6 +10,7 @@ from sonia.application.specialist_adapters import SpecialistAdapter
 from sonia.config import Settings
 from sonia.domain.orchestration import (
     ExecutionMetadata,
+    RunState,
     SpecialistPhase,
     SpecialistResult,
     ValidationCheck,
@@ -77,16 +79,42 @@ def test_run_start_poll_package_and_history_are_idempotent(tmp_path: Path) -> No
     assert conflict.status_code == 409
 
     run_id = created["run_id"]
-    for _ in range(2):
-        started = client.post(
-            f"/api/supervisor/runs/{run_id}/start", headers={"Idempotency-Key": "start"}
-        )
-        assert started.status_code == 202
+    started = client.post(
+        f"/api/supervisor/runs/{run_id}/start", headers={"Idempotency-Key": "start"}
+    )
+    resumed = client.post(
+        f"/api/supervisor/runs/{run_id}/start", headers={"Idempotency-Key": "start"}
+    )
+    assert started.status_code == resumed.status_code == 202
+    assert resumed.json()["state"] == "COMPLETED"
     assert client.get(f"/api/supervisor/runs/{run_id}").json()["state"] == "COMPLETED"
     package = client.get(f"/api/supervisor/runs/{run_id}/package")
     history = client.get(f"/api/supervisor/runs/{run_id}/history").json()["history"]
     assert package.status_code == 200 and len(package.json()["package_revision"]) == 64
     assert history == "billing billing:judge collections collections:judge bi bi:judge".split()
+
+
+def test_active_start_directly_schedules_resume_from_current_snapshot(tmp_path: Path) -> None:
+    client, dataset, ruleset, runner = _system(tmp_path)
+    run = runner.create_run(dataset, ruleset, "create-direct")
+    runner.start(run.run_id, "start-direct")
+    runner.advance(run.run_id, RunState.BILLING_RUNNING, "billing-direct")
+    route = next(
+        route
+        for included in client.app.routes
+        for route in getattr(getattr(included, "original_router", None), "routes", ())
+        if route.path == "/api/supervisor/runs/{run_id}/start"
+    )
+    background = BackgroundTasks()
+
+    resumed = route.endpoint(run.run_id, background, "start-direct")
+
+    assert resumed.state is RunState.BILLING_JUDGING
+    assert len(background.tasks) == 1
+    completed = runner.run(run.run_id, "background:start-direct")
+    assert completed.state is RunState.COMPLETED
+    assert runner.history(run.run_id).count("billing") == 1
+    client.close()
 
 
 def test_completed_review_is_append_only_and_digest_idempotent(tmp_path: Path) -> None:

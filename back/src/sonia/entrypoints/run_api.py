@@ -20,6 +20,7 @@ from sonia.application.dataset_supervisor import (
     SupervisorDatasetCoordinator,
 )
 from sonia.application.orchestrator import RunOrchestrator
+from sonia.domain.orchestration import RunState
 from sonia.persistence.backup import StorageHardener
 
 _LOG = logging.getLogger(__name__)
@@ -277,7 +278,8 @@ def create_run_router(
             raise HTTPException(status_code=409, detail=str(error)) from error
         except RuntimeError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
-        background.add_task(runner.run, run_id, f"background:{key}")
+        if started.state not in (RunState.COMPLETED, RunState.MANUAL_REVIEW):
+            background.add_task(runner.run, run_id, f"background:{key}")
         return started
 
     @router.get("/runs/{run_id}")
