@@ -1540,3 +1540,8 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+.rule-questions, .review-form fieldset, .rule-questions label, .review-form label { display: grid; gap: 0.65rem; }
+.rule-questions input, .review-form select, .review-form textarea { border: 1px solid var(--line); border-radius: 0.65rem; padding: 0.65rem; }
+.evidence-output { overflow: auto; white-space: pre-wrap; }
+#rule-card[hidden] + .supervisor-card { grid-column: 1 / -1; }

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -130,6 +130,10 @@ class JudgeDecision(ImmutableModel):
     corrective_constraints: tuple[str, ...] = ()
     mode: JudgeMode
     evidence_refs: tuple[str, ...]
+    metadata: ExecutionMetadata = Field(
+        default_factory=lambda: ExecutionMetadata(latency_ms=0, token_count=0)
+    )
+    decided_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 _NEXT_STATE = {
@@ -157,6 +161,7 @@ class RevenueAnalysisRun(ImmutableModel):
     ruleset_revision: str = Field(min_length=1)
     state: RunState = RunState.CREATED
     version: int = Field(default=0, ge=0)
+    manual_reason: str | None = None
 
     def transition_to(
         self,
