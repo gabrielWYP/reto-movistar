@@ -59,6 +59,14 @@ MANUAL_REVIEW.
 - THEN the verdict is RETRY with the failed checks and bounded correction instructions
 - AND exactly one additional attempt is permitted under the same phase identity
 
+#### Scenario: Confirm a validation-required deterministic result
+
+- GIVEN a specialist returns `REQUIERE_VALIDACION` with normalized output evidence
+- WHEN the Judge evaluates the first attempt
+- THEN it emits RETRY requiring deterministic confirmation
+- AND the second attempt receives PASS only when its phase-bound output digest matches attempt one
+- AND a changed or missing second-attempt digest produces MANUAL_REVIEW without a third attempt
+
 #### Scenario: Second attempt fails
 
 - GIVEN a specialist has consumed its one permitted retry

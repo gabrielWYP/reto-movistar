@@ -4,8 +4,8 @@
 
 - Mode: Strict TDD; delivery: Feature Branch Chain.
 - Completed: gates 0.1-0.2 and tasks 1.1-5.3 (20/21); remaining: live K3S task 5.4.
-- Current branch: `feature/autonomous-revenue-orchestration-11-k3s`.
-- Intended base: `feature/autonomous-revenue-orchestration-10-hardening-e2e`; infra dependency: `feature/movistar-autonomous-storage`.
+- Current branch: `feature/autonomous-revenue-orchestration-13-retry-confirmation`.
+- Intended base: `origin/main`; infra dependency merged separately.
 
 ## TDD Cycle Evidence
 
@@ -20,6 +20,7 @@
 | 4.3-4.4 | UI RED: 1 failed/1 passed without autonomous controls | Focused GREEN: 3 passed | Static accessibility/read-only boundary plus real six-step terminal API journey | Removed runtime demo calls; Node syntax and focused regression passed |
 | 5.1-5.2 | Import RED; triangulation 2 failed/6 passed; review REDs: 2 failed then physical-row 1 failed | Focused GREEN: 12 passed | CSV/ZIP limits, localized negatives, sanitized 503, prompt exclusion, lineage and telemetry | Preserved one safe ZIP wrapper, bounded nesting, fixed recovery semantics; combined 32 passed |
 | 0.1, 5.3 | Safety net rendered 2 Deployments/2 Services; RED failed `missing: name: sonia-live`; restore correction RED rejected `/unused-live` lineage anchor | Storage contract GREEN; Kustomize and 13-resource kubeconform pass | Live/backup PVs, Recreate/readiness, exact retention boundary, fresh restore target, unchanged front | Direct operation-file checks and CI schema validation for the non-rendered restore template |
+| Slice A / 5.4 prerequisite | Unit RED: 1 failed/3 passed because `Judge.evaluate` lacked prior-result confirmation; integration triangulation caught an upstream-evidence false match | Focused Judge/adapters/recovery: 12 passed; proportional regression: 35 passed | Stable Billing digest completes with eight steps; changed digest enters MANUAL_REVIEW after four steps/two attempts | Output selection now binds phase and attempt before comparing digests; 5.4 remains pending live verification |
 
 ## Work Unit Evidence
 
@@ -40,6 +41,7 @@
 | I/app9-supervisor-ui | Focused/runtime `.venv-py312/bin/pytest -q -s back/tests/integration/test_supervisor_ui.py`: 3 passed, including real dataset→rules→202 start→COMPLETED with six evidence records; `node --check front/assets/app.js` passed. Chromium snap could not reach the WSL-local server, so no browser claim is made. Rollback: revert the three Supervisor frontend files, remove the UI test, reopen 4.3-4.4. |
 | J/app10-hardening-e2e | Focused/runtime `.venv-py312/bin/pytest -q -s back/tests/end_to_end/test_autonomous_run.py`: 12 passed; real app completed six steps/package and ASGI readiness returned 503 after dataset corruption. Combined non-TestClient regression: 32 passed. Ruff/format/Mypy/Compose/diff passed. Rollback: remove E2E test and revert validation, `/ready`, upload-path and orchestration-log changes; reopen 5.1-5.2. |
 | K/app11-k3s | Focused `bash Movistar/tests/validate-autonomous-storage.sh`: PASS; `kubectl kustomize Movistar`: 2 Deployments, 2 Services, 2 PVs, 2 PVCs, 1 CronJob; kubeconform: 13 valid/0 invalid/0 errors; PyYAML 12 files and both repos `git diff --check` passed. Live `kubectl get nodes --request-timeout=5s` blocked: `127.0.0.1:6443 was refused`, so 5.4 remains open. Rollback: revert app design/tasks/progress and infra storage/operations/workload/kustomization/workflow files; retained PV data must be preserved/exported, not deleted. |
+| L/app13-retry-confirmation | Focused 12 passed; combined Judge/adapters/recovery/package/storage/E2E 35 passed. Real six-CSV runtime completed eight ordered steps with Judge verdicts Billing RETRY/PASS, Collections PASS, BI PASS and a valid package. Ruff/format/Mypy/diff passed; TestClient composition remains subject to the documented WSL/OneDrive stall. Rollback: revert Judge prior-result gate, orchestrator binding, retry tests/docs; task 5.4 stays open. |
 
 ## Work Unit A/app1
 

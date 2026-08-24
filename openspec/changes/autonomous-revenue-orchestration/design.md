@@ -56,6 +56,10 @@ COMPLETED`; a first retryable verdict returns only to the same phase, and any te
 `MANUAL_REVIEW`. Commands bind idempotency key to digest. `BEGIN IMMEDIATE` renews
 `lease_owner/lease_expires_at`; competing owners are read-only.
 
+`REQUIERE_VALIDACION` is a retryable deterministic confirmation gate: attempt one emits RETRY;
+attempt two may PASS only when the current phase/attempt output evidence digest is identical to
+attempt one. Changed or missing evidence escalates to MANUAL_REVIEW, preserving the two-attempt bound.
+
 ## Persistence, Recovery, and Contracts
 
 `/var/lib/sonia` contains `db/sonia.sqlite3`, `datasets/<revision>/<sha256>.csv`,

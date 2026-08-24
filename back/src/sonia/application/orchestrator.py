@@ -213,7 +213,10 @@ class RunOrchestrator:
             if not expected.endswith("_JUDGING"):
                 raise ValueError(f"State {expected} cannot advance")
             phase = SpecialistPhase(expected.removesuffix("_JUDGING").lower())
-            step = self.judge.evaluate(self._results(run_id)[-1])
+            results = self._results(run_id)
+            current_result = results[-1]
+            previous = next((item for item in reversed(results[:-1]) if item.phase is phase), None)
+            step = self.judge.evaluate(current_result, previous=previous)
             state = (
                 _AFTER_PASS[expected]
                 if step.verdict is JudgeVerdict.PASS

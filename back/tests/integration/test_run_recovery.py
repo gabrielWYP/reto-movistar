@@ -130,3 +130,42 @@ def test_retry_is_bounded_and_storage_loss_freezes_recovery(tmp_path: Path) -> N
     runner.database.rename(runner.database.with_suffix(".unavailable"))
     with pytest.raises(RuntimeError, match="storage unavailable"):
         runner.get_run(run.run_id)
+
+
+@pytest.mark.parametrize(
+    ("changed", "expected_state", "expected_steps"),
+    [(False, RunState.COMPLETED, 8), (True, RunState.MANUAL_REVIEW, 4)],
+)
+def test_validation_required_confirms_stable_digest_without_third_attempt(
+    tmp_path: Path, changed: bool, expected_state: RunState, expected_steps: int
+) -> None:
+    intake, dataset, ruleset, _ = _intake(tmp_path)
+    probes = {phase: Probe(phase) for phase in SpecialistPhase}
+
+    def billing(at: str) -> dict[str, Any]:
+        probe = probes[SpecialistPhase.BILLING]
+        probe.calls += 1
+        revision = probe.calls if changed else 1
+        return {
+            "agent": "billing",
+            "status": "REQUIERE_VALIDACION",
+            "data_quality": {"date": at},
+            "revision": revision,
+        }
+
+    adapters = {
+        SpecialistPhase.BILLING: SpecialistAdapter(SpecialistPhase.BILLING, billing),
+        **{
+            phase: SpecialistAdapter(phase, probes[phase])
+            for phase in (SpecialistPhase.COLLECTIONS, SpecialistPhase.BI)
+        },
+    }
+    runner = RunOrchestrator(
+        tmp_path / "db/sonia.sqlite3", intake, adapters, Judge(), owner="confirm"
+    )
+    run = runner.create_run(dataset, ruleset, "create-confirmation")
+    completed = runner.run(run.run_id, "confirmation")
+
+    assert completed.state is expected_state
+    assert len(runner.history(run.run_id)) == expected_steps
+    assert probes[SpecialistPhase.BILLING].calls == 2
