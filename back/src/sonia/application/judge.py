@@ -16,7 +16,7 @@ from sonia.domain.orchestration import (
 QualitativeEvaluator = Callable[
     [SpecialistResult], tuple[tuple[ValidationCheck, ...], ExecutionMetadata]
 ]
-_NON_RETRYABLE = {"lineage", "schema", "input_binding"}
+_NON_RETRYABLE = {"lineage", "schema", "input_binding", "external_effect"}
 _CONFIRMATION_STATUSES = {"REQUIERE_VALIDACION"}
 
 

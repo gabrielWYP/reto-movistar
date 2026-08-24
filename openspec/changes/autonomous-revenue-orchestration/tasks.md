@@ -69,3 +69,8 @@ Selected Feature Branch Chain: app1 targets a draft tracker; each later app PR t
 - [x] 6.2 RED/GREEN: add a checksummed one-shot operator checkpoint on the durable PVC and resume without duplicate steps after restart.
 - [x] 6.3 Wire the required `ANALYST_HTPASSWD` secret into the reusable K3S deploy and verify unauthenticated public access is denied.
 - [ ] 6.4 Merge the remediation chain, deploy the immutable release, and complete live task 5.4 evidence.
+
+## Phase 7: Final Verification Remediation (Issue #57)
+
+- [x] 7.1 RED/GREEN: persist trusted evidence annotations separately and prove direct final-review replay/conflict without run mutation or rerun.
+- [x] 7.2 RED/GREEN: refuse already-bound external-effect rules inside every specialist adapter before any tool invocation and emit fail-closed evidence.

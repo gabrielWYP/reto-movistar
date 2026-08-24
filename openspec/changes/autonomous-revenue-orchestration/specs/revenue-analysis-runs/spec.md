@@ -103,6 +103,7 @@ They MUST NOT issue invoices, apply payments, contact customers, or mutate exter
 - GIVEN a bound rule is interpreted as an external-effect action
 - WHEN a specialist evaluates its plan
 - THEN the action is refused
+- AND no specialist runner or tool is invoked
 - AND the refusal is recorded as evidence without performing the effect
 
 ### Requirement: Operator-only restart checkpoint

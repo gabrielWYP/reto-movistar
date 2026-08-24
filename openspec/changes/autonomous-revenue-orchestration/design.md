@@ -94,6 +94,8 @@ restart or newer publication cannot substitute inputs while Billing, Collections
 `GET /api/supervisor/runs/{id}`, evidence retrieval, and package review use strict schemas/conflicts. Start returns `202`; polling
 is authoritative. Only Supervisor exposes upload/rules; specialist tabs stay read-only. UI renders history,
 limitations, the final package, and one analyst decision.
+Evidence annotations use dedicated GET/POST routes and an append-only SQLite table bound to the committed
+evidence digest and trusted proxy identity; they never share review-decision or run-transition storage.
 
 ## Security and File Changes
 

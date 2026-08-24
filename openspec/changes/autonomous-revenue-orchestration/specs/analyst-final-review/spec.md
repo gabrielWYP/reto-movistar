@@ -23,8 +23,9 @@ transition.
 #### Scenario: Analyst annotates intermediate evidence
 
 - GIVEN a successful run is still executing
-- WHEN the analyst records a non-decision annotation on visible phase evidence
+- WHEN a trusted analyst records a non-decision annotation with an idempotency key
 - THEN the annotation is retained separately
+- AND its exact run/evidence digest survives repository reopen while conflicting replay is rejected
 - AND it does not change any result, verdict, or transition
 
 ### Requirement: Immutable final review package

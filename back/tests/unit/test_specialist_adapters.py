@@ -5,8 +5,15 @@ from typing import Any
 
 import pytest
 
+from sonia.application.judge import Judge
 from sonia.application.specialist_adapters import build_specialist_adapters
-from sonia.domain.orchestration import EvidenceReference, ExecutionPlan, SpecialistPhase
+from sonia.domain.orchestration import (
+    BusinessRule,
+    EvidenceReference,
+    ExecutionPlan,
+    JudgeVerdict,
+    SpecialistPhase,
+)
 
 
 def _payload(agent: str) -> dict[str, Any]:
@@ -80,3 +87,30 @@ def test_adapters_reject_phase_mismatch_and_missing_upstream() -> None:
         adapters[SpecialistPhase.BILLING].execute(_plan(SpecialistPhase.BI), attempt=1)
     with pytest.raises(ValueError, match="upstream"):
         adapters[SpecialistPhase.COLLECTIONS].execute(_plan(SpecialistPhase.COLLECTIONS), attempt=1)
+
+
+@pytest.mark.parametrize("rule", ["Emitir factura al cliente", "Delete all invoice records"])
+def test_adapter_refuses_bound_external_effect_before_invoking_tool(rule: str) -> None:
+    calls = 0
+
+    def forbidden(_: str) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return _payload("billing")
+
+    plan = _plan(SpecialistPhase.BILLING).model_copy(
+        update={"global_rules": (BusinessRule(rule_id="g1", answer=rule),)}
+    )
+    result = build_specialist_adapters(
+        type("Billing", (), {"billing_health_snapshot": staticmethod(forbidden)})(),
+        ToolStub("collections"),
+        ToolStub("bi"),
+    )[SpecialistPhase.BILLING].execute(plan, attempt=1)
+
+    assert calls == 0 and result.status == "EXTERNAL_EFFECT_REFUSED"
+    assert result.findings[0].code == "EXTERNAL_EFFECT_REFUSED"
+    assert (
+        next(check for check in result.validation_checks if check.name == "external_effect").passed
+        is False
+    )
+    assert Judge().evaluate(result).verdict is JudgeVerdict.MANUAL_REVIEW
