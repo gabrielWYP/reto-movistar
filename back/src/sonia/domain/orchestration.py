@@ -168,6 +168,16 @@ _JUDGE_PHASE = {
 }
 
 
+class RunSummary(ImmutableModel):
+    """Read-only projection listing past runs for analyst selection."""
+
+    run_id: str
+    dataset_revision: str
+    ruleset_revision: str
+    state: RunState
+    created_at: str | None = None
+
+
 class RevenueAnalysisRun(ImmutableModel):
     """Revision-bound run advanced only through the fixed legal sequence."""
 

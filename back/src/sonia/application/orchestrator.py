@@ -7,7 +7,7 @@ import logging
 import sqlite3
 import time
 from collections.abc import Callable
-from datetime import date
+from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from sonia.domain.orchestration import (
     JudgeVerdict,
     RevenueAnalysisRun,
     RunState,
+    RunSummary,
     SpecialistPhase,
     SpecialistResult,
 )
@@ -37,6 +38,7 @@ _UPDATE = "UPDATE runs SET payload = ? WHERE run_id = ?"
 _STEP = "INSERT INTO run_steps(run_id, kind, phase, attempt, payload) VALUES (?, ?, ?, ?, ?)"
 _RESULTS = "SELECT payload FROM run_steps WHERE run_id = ? AND kind = 'specialist' ORDER BY seq"
 _LEASE = "SELECT lease_owner, lease_expires FROM runs WHERE run_id = ?"
+_RECENT = "SELECT payload, created_at FROM runs ORDER BY rowid DESC LIMIT ?"
 _SCHEMA = (
     "CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY,payload TEXT NOT NULL,"
     "lease_owner TEXT,lease_expires REAL NOT NULL DEFAULT 0);"
@@ -76,6 +78,9 @@ class RunOrchestrator:
             raise RuntimeError("Durable run storage unavailable")
         with self._connect() as connection:
             connection.executescript(_SCHEMA)
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(runs)")}
+            if "created_at" not in columns:
+                connection.execute("ALTER TABLE runs ADD COLUMN created_at TEXT")
 
     def _connect(self) -> sqlite3.Connection:
         if not self.database.is_file():
@@ -103,6 +108,20 @@ class RunOrchestrator:
         if row and row["digest"] != digest:
             raise ValueError("Conflicting idempotency key content")
         return RevenueAnalysisRun.model_validate_json(row["payload"]) if row else None
+
+    def recent_runs(self, limit: int = 20) -> tuple[RunSummary, ...]:
+        """List the newest runs so the analyst can reopen one without its id."""
+        with self._connect() as connection:
+            rows = connection.execute(_RECENT, (limit,)).fetchall()
+        return tuple(
+            RunSummary(
+                **RevenueAnalysisRun.model_validate_json(row["payload"]).model_dump(
+                    include={"run_id", "dataset_revision", "ruleset_revision", "state"}
+                ),
+                created_at=row["created_at"],
+            )
+            for row in rows
+        )
 
     def get_run(self, run_id: str) -> RevenueAnalysisRun:
         """Return only the last committed durable run snapshot."""
@@ -157,8 +176,8 @@ class RunOrchestrator:
             if replay:
                 return replay
             connection.execute(
-                "INSERT OR IGNORE INTO runs VALUES (?, ?, NULL, 0)",
-                (run.run_id, run.model_dump_json()),
+                "INSERT OR IGNORE INTO runs VALUES (?, ?, NULL, 0, ?)",
+                (run.run_id, run.model_dump_json(), datetime.now(UTC).isoformat()),
             )
             committed = self._load(connection, run.run_id)
             connection.execute(_COMMAND, (key, digest, committed.model_dump_json()))

@@ -255,3 +255,17 @@ def test_rerun_attempt_creates_a_fresh_run_for_identical_inputs(tmp_path: Path) 
     assert attempt == 1
     assert second.run_id != first.run_id
     assert runner.create_run(dataset, ruleset, "create-2", attempt=attempt) == second
+
+
+def test_recent_runs_are_listed_newest_first(tmp_path: Path) -> None:
+    """The analyst picks a past run from Supervisor without knowing its id."""
+    _, dataset, ruleset, _ = _intake(tmp_path)
+    runner, _ = _runner(tmp_path)
+    first = runner.create_run(dataset, ruleset, "create-1")
+    second = runner.create_run(dataset, ruleset, "create-2", attempt=1)
+
+    listed = runner.recent_runs()
+
+    assert [item.run_id for item in listed] == [second.run_id, first.run_id]
+    assert all(item.dataset_revision == dataset for item in listed)
+    assert listed[0].created_at is not None

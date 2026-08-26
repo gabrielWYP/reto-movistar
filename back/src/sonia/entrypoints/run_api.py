@@ -372,6 +372,10 @@ def create_run_router(
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
+    @router.get("/runs")
+    def recent(limit: int = 20) -> object:
+        return runner.recent_runs(max(1, min(limit, 50)))
+
     @router.post("/runs", status_code=201)
     def create(request: RunCreate, key: IdempotencyKey) -> object:
         try:

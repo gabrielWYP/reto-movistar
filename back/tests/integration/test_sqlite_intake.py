@@ -143,3 +143,19 @@ def test_status_exposes_revision_after_restart(tmp_path: Path) -> None:
 
     assert status["dataset_configured"] is True
     assert status["dataset_revision"] == published["dataset_revision"]
+
+
+def test_questions_carry_business_language_for_analysts(tmp_path: Path) -> None:
+    """A non-technical analyst answers these, so raw ids are not an interface."""
+    coordinator, repository = _coordinator(tmp_path)
+    result = coordinator.publish(_files(), idempotency_key="upload-labels")
+
+    questions = repository.questions(result["dataset_revision"])
+    by_id = {question.question_id: question for question in questions}
+
+    assert all(question.label and question.help for question in questions)
+    assert by_id["as_of_date"].label == "Fecha de corte"
+    assert by_id["billing_materiality"].unit == "S/"
+    assert by_id["variance_threshold"].unit == "%"
+    assert by_id["overdue_days"].unit == "días"
+    assert by_id["overdue_days"].default == "30"

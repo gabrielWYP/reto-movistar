@@ -328,6 +328,7 @@ async function publishDataset() {
     result.textContent = `Dataset ${payload.dataset_revision} publicado para los tres especialistas.`;
     result.className = "dataset-publish-result success";
     await loadDatasetStatus();
+loadRecentRuns();
     await loadQuestions();
     showToast("Fuente compartida publicada por Supervisor.");
   } catch (error) {
@@ -372,14 +373,22 @@ async function loadQuestions() {
   container.replaceChildren();
   questions.forEach((question) => {
     const label = document.createElement("label");
-    label.textContent = `${question.target} · ${question.question_id}`;
+    const title = document.createElement("span");
+    title.className = "rule-label";
+    title.textContent = question.unit
+      ? `${question.label} (${question.unit})`
+      : question.label || question.question_id;
+    const help = document.createElement("small");
+    help.className = "rule-help";
+    help.textContent = question.help || "";
     const input = document.createElement("input");
     input.name = question.question_id;
     input.type = ["date", "number"].includes(question.answer_type)
       ? question.answer_type
       : "text";
     input.required = question.mandatory !== false;
-    label.append(input);
+    if (question.default) input.value = question.default;
+    label.append(title, help, input);
     container.append(label);
   });
   byId("rule-card").hidden = false;
@@ -419,15 +428,103 @@ async function startRun(event) {
   }
 }
 
-function renderRecords(id, records) {
-  const target = byId(id);
-  target.textContent = records
-    .map((record) =>
-      typeof record === "string"
-        ? record
-        : `${record.phase} · ${record.kind}\n${JSON.stringify(record.content, null, 2)}`,
-    )
-    .join("\n");
+const PHASE_LABEL = { billing: "Facturación", collections: "Cobranzas", bi: "Business Intelligence" };
+const VERDICT_LABEL = {
+  PASS: "Validado",
+  RETRY: "Reintentado por el validador",
+  FAIL: "Rechazado por el validador",
+};
+const ACTION_LABEL = {
+  review_cycle_gap_candidates: "Revisar posibles ciclos de facturación sin documento",
+  review_material_credit_notes: "Revisar notas de crédito materiales",
+  validate_data_coverage: "Validar la cobertura de los datos",
+  review_collection_priorities: "Revisar prioridades de cobranza",
+  review_unmatched_payments: "Revisar pagos sin factura asociada",
+  review_document_scope: "Revisar el alcance documental",
+};
+
+const humanize = (value) =>
+  String(value ?? "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+
+function technicalDetail(summary, value) {
+  const details = document.createElement("details");
+  details.className = "trace-detail";
+  const label = document.createElement("summary");
+  label.textContent = summary;
+  const block = document.createElement("pre");
+  block.className = "evidence-output";
+  block.textContent = JSON.stringify(value, null, 2);
+  details.append(label, block);
+  return details;
+}
+
+function renderFindings(target, records) {
+  target.replaceChildren();
+  const specialists = records.filter((r) => r && r.kind === "specialist");
+  if (!specialists.length) {
+    target.append(Object.assign(document.createElement("p"), {
+      className: "muted",
+      textContent: "Todavía no hay hallazgos para este análisis.",
+    }));
+    return;
+  }
+  specialists.forEach((record) => {
+    const content = record.content || {};
+    const card = document.createElement("article");
+    card.className = "finding-card";
+    const heading = document.createElement("h4");
+    heading.textContent = PHASE_LABEL[record.phase] || humanize(record.phase);
+    card.append(heading);
+
+    const findings = content.findings || [];
+    if (findings.length) {
+      const list = document.createElement("ul");
+      list.className = "finding-list";
+      findings.forEach((finding) => {
+        const item = document.createElement("li");
+        item.textContent = finding.summary || humanize(finding.code);
+        list.append(item);
+      });
+      card.append(list);
+    } else {
+      card.append(Object.assign(document.createElement("p"), {
+        className: "muted",
+        textContent: "Sin hallazgos en esta etapa.",
+      }));
+    }
+
+    const actions = content.recommended_actions || [];
+    if (actions.length) {
+      const heading2 = document.createElement("p");
+      heading2.className = "finding-actions-title";
+      heading2.textContent = "Acciones recomendadas";
+      const list = document.createElement("ul");
+      list.className = "finding-actions";
+      actions.forEach((action) => {
+        const item = document.createElement("li");
+        item.textContent = ACTION_LABEL[action] || humanize(action);
+        list.append(item);
+      });
+      card.append(heading2, list);
+    }
+    card.append(technicalDetail("Ver trazabilidad técnica", content));
+    target.append(card);
+  });
+}
+
+function renderValidation(target, records) {
+  target.replaceChildren();
+  const judged = records.filter((r) => r && r.kind === "judge");
+  judged.forEach((record) => {
+    const row = document.createElement("p");
+    row.className = "validation-row";
+    const verdict = record.content?.verdict;
+    row.textContent = `${PHASE_LABEL[record.phase] || humanize(record.phase)}: ${
+      VERDICT_LABEL[verdict] || humanize(verdict)
+    }`;
+    target.append(row);
+  });
+  if (judged.length) target.append(technicalDetail("Ver detalle de validación", judged));
 }
 
 async function pollRun() {
@@ -450,16 +547,54 @@ async function pollRun() {
     api(`${base}/evidence`),
     api(`${base}/package`),
   ]);
-  renderRecords("judge-history", history.history);
-  renderRecords("evidence-output", evidence.evidence);
+  renderFindings(byId("run-findings"), history.history);
+  renderValidation(byId("run-validation"), history.history);
   appState.packageRevision = packageData.package_revision;
-  byId("package-output").textContent = JSON.stringify(packageData.envelope, null, 2);
+  byId("run-package").replaceChildren(
+    technicalDetail("Ver paquete final y evidencia", {
+      envelope: packageData.envelope,
+      evidence: evidence.evidence,
+    }),
+  );
+  loadRecentRuns();
   byId("review-form").hidden = false;
   setBusy(false);
   try {
     lockReview(await api(`${base}/review`));
   } catch (error) {
     if (!error.message.includes("not found")) console.debug(error);
+  }
+}
+
+async function loadRecentRuns() {
+  const target = byId("recent-runs");
+  if (!target) return;
+  try {
+    const runs = await api("/api/supervisor/runs?limit=20");
+    target.replaceChildren();
+    if (!runs.length) {
+      target.textContent = "Todavía no hay análisis guardados.";
+      return;
+    }
+    runs.forEach((run) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "recent-run";
+      const when = run.created_at
+        ? new Date(run.created_at).toLocaleString("es-PE")
+        : "fecha no registrada";
+      item.textContent = `${when} · ${statusLabel(run.state) || humanize(run.state)}`;
+      item.title = run.run_id;
+      item.addEventListener("click", () => {
+        appState.runId = run.run_id;
+        byId("hero-case-id").textContent = run.run_id;
+        pollRun();
+      });
+      target.append(item);
+    });
+  } catch (error) {
+    target.textContent = "No se pudo cargar el historial de análisis.";
+    console.debug(error);
   }
 }
 

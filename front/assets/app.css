@@ -1545,3 +1545,24 @@ h1 {
 .rule-questions input, .review-form select, .review-form textarea { border: 1px solid var(--line); border-radius: 0.65rem; padding: 0.65rem; }
 .evidence-output { overflow: auto; white-space: pre-wrap; }
 #rule-card[hidden] + .supervisor-card { grid-column: 1 / -1; }
+
+/* Analyst-first run results; technical evidence stays behind a disclosure. */
+.finding-card {
+  border: 1px solid var(--line, #d8dde5);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.75rem;
+}
+.finding-card h4 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+.finding-list, .finding-actions { margin: 0 0 0.5rem; padding-left: 1.1rem; }
+.finding-list li, .finding-actions li { margin-bottom: 0.3rem; line-height: 1.45; }
+.finding-actions-title { margin: 0.6rem 0 0.3rem; font-weight: 600; font-size: 0.85rem; }
+.validation-row { margin: 0.2rem 0; font-size: 0.9rem; }
+.trace-detail { margin-top: 0.6rem; }
+.trace-detail > summary { cursor: pointer; font-size: 0.85rem; opacity: 0.75; }
+.trace-detail > summary:hover { opacity: 1; }
+.recent-runs-list { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
+.recent-run { text-align: left; padding: 0.5rem 0.7rem; border-radius: 8px; cursor: pointer; }
+.rule-label { display: block; font-weight: 600; }
+.rule-help { display: block; opacity: 0.75; margin-bottom: 0.3rem; line-height: 1.35; }
+.muted { opacity: 0.7; }

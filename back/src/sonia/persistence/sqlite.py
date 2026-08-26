@@ -37,12 +37,66 @@ def count_csv_rows(content: bytes) -> int:
 
 
 _QUESTION_DEFS = (
-    ("as_of_date", "global", "date", None),
-    ("objective", "global", "text", None),
-    ("scope", "global", "text", None),
-    ("billing_materiality", "billing", "number", "invoices"),
-    ("overdue_days", "collections", "number", "payments"),
-    ("variance_threshold", "bi", "number", "invoices"),
+    (
+        "as_of_date",
+        "global",
+        "date",
+        None,
+        "Fecha de corte",
+        "Última fecha considerada. Nada posterior entra al análisis.",
+        "",
+        "",
+    ),
+    (
+        "objective",
+        "global",
+        "text",
+        None,
+        "Objetivo del análisis",
+        "Qué buscas detectar en este ciclo.",
+        "",
+        "",
+    ),
+    (
+        "scope",
+        "global",
+        "text",
+        None,
+        "Alcance",
+        "Cartera o segmento a revisar.",
+        "",
+        "",
+    ),
+    (
+        "billing_materiality",
+        "billing",
+        "number",
+        "invoices",
+        "Umbral de materialidad",
+        "Diferencia mínima en soles para reportar un hallazgo de facturación.",
+        "S/",
+        "100",
+    ),
+    (
+        "overdue_days",
+        "collections",
+        "number",
+        "payments",
+        "Días de vencimiento",
+        "A partir de cuántos días de mora se considera deuda exigible.",
+        "días",
+        "30",
+    ),
+    (
+        "variance_threshold",
+        "bi",
+        "number",
+        "invoices",
+        "Variación significativa",
+        "Desvío mínimo contra el periodo anterior para marcar el caso.",
+        "%",
+        "10",
+    ),
 )
 
 
@@ -64,13 +118,21 @@ class DatasetRevision(ImmutableModel):
 
 
 class RuleQuestion(ImmutableModel):
-    """Typed question traceable to a profile or requirement."""
+    """Typed question traceable to a profile or requirement.
+
+    ``label``, ``help``, ``unit`` and ``default`` exist so the operations centre
+    can render business language instead of the raw identifier.
+    """
 
     question_id: str
     target: str
     answer_type: str
     mandatory: bool = True
     evidence: str
+    label: str
+    help: str
+    unit: str = ""
+    default: str = ""
 
 
 class RulesetRevision(ImmutableModel):
@@ -241,8 +303,21 @@ class SQLiteIntakeRepository:
                 target=target,
                 answer_type=answer_type,
                 evidence=evidence[TABLE_FILES[source]] if source else "requirement",
+                label=label,
+                help=help_text,
+                unit=unit,
+                default=default,
             )
-            for question_id, target, answer_type, source in _QUESTION_DEFS
+            for (
+                question_id,
+                target,
+                answer_type,
+                source,
+                label,
+                help_text,
+                unit,
+                default,
+            ) in _QUESTION_DEFS
         )
 
     def create_ruleset(self, dataset_revision: str, answers: dict[str, str]) -> RulesetRevision:

@@ -232,9 +232,13 @@
               <span>Auditable</span>
             </div>
             <ol id="timeline" class="timeline"></ol>
-            <pre id="judge-history" class="evidence-output" aria-label="Historial Judge"></pre>
-            <pre id="evidence-output" class="evidence-output" aria-label="Evidencia de especialistas"></pre>
-            <pre id="package-output" class="evidence-output" aria-label="Paquete final"></pre>
+            <section id="run-findings" class="run-findings" aria-label="Hallazgos del análisis"></section>
+            <section id="run-validation" class="run-validation" aria-label="Resultado de la validación"></section>
+            <div id="run-package"></div>
+            <details class="trace-detail">
+              <summary>Últimas runs</summary>
+              <div id="recent-runs" class="recent-runs-list">Cargando análisis guardados…</div>
+            </details>
           </div>
           <form id="review-form" class="review-form" hidden>
             <h3>Validación final</h3>

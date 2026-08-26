@@ -28,8 +28,12 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }
 
-    location /agents/ {
+    location ~ ^/agents/[^/]+/assets/ {
         add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    location /agents/ {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
     }
 
     location = /bi {

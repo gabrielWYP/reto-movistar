@@ -16,7 +16,7 @@ JS = (ROOT / "front/assets/app.js").read_text(encoding="utf-8")
 def test_supervisor_ui_drives_intake_run_evidence_and_one_final_review() -> None:
     """The browser follows the durable API without intermediate approvals."""
     element_ids = (
-        "rule-questions run-progress judge-history evidence-output package-output "
+        "rule-questions run-progress run-findings run-validation run-package recent-runs "
         "review-form review-outcome review-reason review-annotation"
     ).split()
     for element_id in element_ids:
@@ -30,6 +30,18 @@ def test_supervisor_ui_drives_intake_run_evidence_and_one_final_review() -> None
     assert 'aria-live="polite"' in HTML and 'aria-busy="false"' in HTML
     assert "pollRun" in JS and "lockReview" in JS and "syncReviewReason" in JS
     assert "/api/demo" not in JS and "X-Forwarded-User" not in JS
+
+
+def test_results_read_as_business_language_and_hide_raw_payloads() -> None:
+    """A non-technical analyst reads findings, not judge envelopes and digests."""
+    assert "renderFindings" in JS and "renderValidation" in JS
+    assert "Facturación" in JS and "Cobranzas" in JS
+    assert "Acciones recomendadas" in JS
+    # Raw payloads survive for traceability, but only inside a disclosure.
+    assert "technicalDetail" in JS
+    assert "Ver trazabilidad técnica" in JS
+    assert "<pre" not in HTML
+    assert "Últimas runs" in HTML and "/api/supervisor/runs?limit=" in JS
 
 
 def test_only_supervisor_has_manual_intake_and_specialists_are_read_only() -> None:
