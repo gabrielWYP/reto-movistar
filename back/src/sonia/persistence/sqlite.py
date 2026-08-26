@@ -7,6 +7,7 @@ import io
 import os
 import sqlite3
 import tempfile
+from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -15,6 +16,25 @@ from bi_agent.data import TABLE_FILES
 from pydantic import Field
 
 from sonia.domain.orchestration import BusinessRule, ImmutableModel, external_effect_rule_ids
+
+CSV_ENCODINGS = ("utf-8-sig", "utf-8", "latin1", "cp1252")
+
+
+def decode_csv_text(content: bytes) -> str:
+    """Decode one official source, tolerating the cp1252 exports Movistar ships."""
+    for encoding in CSV_ENCODINGS:
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("No se pudo decodificar el CSV. Usa UTF-8, ANSI o Windows-1252.")
+
+
+def count_csv_rows(content: bytes) -> int:
+    """Count data rows, excluding the header."""
+    rows = list(csv.reader(io.StringIO(decode_csv_text(content)), delimiter="|"))
+    return len(rows) - 1
+
 
 _QUESTION_DEFS = (
     ("as_of_date", "global", "date", None),
@@ -123,18 +143,18 @@ class SQLiteIntakeRepository:
                 os.unlink(temporary)
         return content_digest, target
 
-    @staticmethod
-    def _profile(source: str, digest: str, path: Path, content: bytes) -> DatasetFile:
-        rows = list(csv.reader(io.StringIO(content.decode("utf-8-sig")), delimiter="|"))
-        return DatasetFile(
-            source=source,
-            sha256=digest,
-            row_count=len(rows) - 1,
-            path=path,
-        )
+    def publish_dataset(
+        self,
+        files: dict[str, bytes],
+        idempotency_key: str,
+        *,
+        row_counts: Mapping[str, int] | None = None,
+    ) -> DatasetRevision:
+        """Atomically bind a request key to one immutable dataset revision.
 
-    def publish_dataset(self, files: dict[str, bytes], idempotency_key: str) -> DatasetRevision:
-        """Atomically bind a request key to one immutable dataset revision."""
+        Callers that already parsed the sources during validation pass their row
+        counts through ``row_counts`` so publication never re-parses the CSVs.
+        """
         if set(files) != set(TABLE_FILES.values()):
             raise ValueError("A dataset revision requires all six official sources")
         digest = self._digest(files)
@@ -152,9 +172,16 @@ class SQLiteIntakeRepository:
                 if persisted is None:
                     raise RuntimeError("Idempotency record references a missing dataset")
                 return persisted
+            counts = row_counts or {}
             profiles = tuple(
-                self._profile(name, *self._atomic_write(revision_id, content), content)
+                DatasetFile(
+                    source=name,
+                    sha256=file_digest,
+                    row_count=counts.get(name) or count_csv_rows(content),
+                    path=path,
+                )
                 for name, content in sorted(files.items())
+                for file_digest, path in (self._atomic_write(revision_id, content),)
             )
             revision = DatasetRevision(
                 revision_id=revision_id, created_at=datetime.now(UTC), files=profiles

@@ -25,7 +25,7 @@ from collections_agent.application import CollectionsBackend
 from collections_agent.service import CollectionsService
 from collections_agent.uploads import load_uploaded_csvs
 
-from sonia.persistence.sqlite import SQLiteIntakeRepository
+from sonia.persistence.sqlite import SQLiteIntakeRepository, decode_csv_text
 
 MAX_DATASET_BYTES = 25 * 1024 * 1024
 MAX_DATASET_FILES = 6
@@ -85,9 +85,17 @@ def _inspect_zip(content: bytes, depth: int = 0) -> None:
 
 
 def validate_dataset_files(
-    files: dict[str, bytes], *, max_rows: int = MAX_CSV_ROWS, max_fields: int = MAX_CSV_FIELDS
+    files: dict[str, bytes],
+    *,
+    max_rows: int = MAX_CSV_ROWS,
+    max_fields: int = MAX_CSV_FIELDS,
+    row_counts: dict[str, int] | None = None,
 ) -> dict[str, bytes]:
-    """Return canonical CSV bytes after bounded data-only validation."""
+    """Return canonical CSV bytes after bounded data-only validation.
+
+    Validation already parses every source, so a caller that needs the per-file
+    row counts passes a ``row_counts`` collector instead of parsing them again.
+    """
     expected = set(BI_TABLE_FILES.values())
     for name, content in files.items():
         _safe_upload_name(name)
@@ -105,13 +113,10 @@ def validate_dataset_files(
     for name, content in normalized.items():
         if len(content) > MAX_DATASET_BYTES or b"\0" in content:
             raise ValueError(f"{name}: invalid encoding or size")
-        text = None
-        for encoding in ("utf-8-sig", "cp1252"):
-            try:
-                text = content.decode(encoding)
-                break
-            except UnicodeDecodeError:
-                continue
+        try:
+            text = decode_csv_text(content)
+        except ValueError:
+            text = None
         if text is None or any(
             ord(character) < 32 and character not in "\r\n\t" for character in text
         ):
@@ -136,6 +141,8 @@ def validate_dataset_files(
                 raise ValueError(f"{name}: schema or field limit violation")
             if any(_is_formula(cell) for cell in row):
                 raise ValueError(f"{name}: spreadsheet formula is not allowed")
+        if row_counts is not None:
+            row_counts[name] = row_count
     return normalized
 
 
@@ -198,6 +205,7 @@ class SupervisorDatasetCoordinator:
         return {
             "status": "ready" if ready else "dataset_not_configured",
             "dataset_configured": ready,
+            "dataset_revision": self._active_revision if ready else None,
             "dataset_source": SUPERVISOR_SOURCE if supervisor_owned else None,
             "dataset_file_count": bi["dataset_file_count"] if supervisor_owned else 0,
             "dataset_bytes": bi["dataset_bytes"] if supervisor_owned else 0,
@@ -239,7 +247,8 @@ class SupervisorDatasetCoordinator:
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         """Validate the complete six-file contract before changing any agent."""
-        normalized = validate_dataset_files(files)
+        row_counts: dict[str, int] = {}
+        normalized = validate_dataset_files(files, row_counts=row_counts)
         missing = missing_dataset_files(normalized)
         if missing:
             raise ValueError(
@@ -272,7 +281,9 @@ class SupervisorDatasetCoordinator:
         if self._intake is not None:
             if not idempotency_key:
                 raise ValueError("An idempotency key is required for durable publication")
-            revision = self._intake.publish_dataset(normalized, idempotency_key)
+            revision = self._intake.publish_dataset(
+                normalized, idempotency_key, row_counts=row_counts
+            )
 
         with self._lock:
             self._bi.publish_dataset(bi_service, normalized, source=SUPERVISOR_SOURCE)

@@ -241,3 +241,17 @@ def test_invalid_operator_checkpoint_freezes_before_advancement(
     assert runner.get_run(created.run_id).state is RunState.CREATED
     assert probes[SpecialistPhase.BILLING].calls == 0
     assert request.exists()
+
+
+def test_rerun_attempt_creates_a_fresh_run_for_identical_inputs(tmp_path: Path) -> None:
+    """Operators re-execute the same dataset without re-uploading it."""
+    _, dataset, ruleset, _ = _intake(tmp_path)
+    runner, _ = _runner(tmp_path)
+    first = runner.create_run(dataset, ruleset, "create-1")
+
+    attempt = runner.next_attempt(dataset, ruleset)
+    second = runner.create_run(dataset, ruleset, "create-2", attempt=attempt)
+
+    assert attempt == 1
+    assert second.run_id != first.run_id
+    assert runner.create_run(dataset, ruleset, "create-2", attempt=attempt) == second

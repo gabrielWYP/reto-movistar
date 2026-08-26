@@ -59,6 +59,7 @@ class RunCreate(_Immutable):
 
     dataset_revision: str = Field(min_length=1)
     ruleset_revision: str = Field(min_length=1)
+    rerun: bool = False
 
 
 class RulesetCreate(_Immutable):
@@ -372,7 +373,14 @@ def create_run_router(
     @router.post("/runs", status_code=201)
     def create(request: RunCreate, key: IdempotencyKey) -> object:
         try:
-            return runner.create_run(request.dataset_revision, request.ruleset_revision, key)
+            attempt = (
+                runner.next_attempt(request.dataset_revision, request.ruleset_revision)
+                if request.rerun
+                else 0
+            )
+            return runner.create_run(
+                request.dataset_revision, request.ruleset_revision, key, attempt
+            )
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 

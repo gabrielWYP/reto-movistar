@@ -111,3 +111,35 @@ def test_external_effects_are_recorded_not_executable(tmp_path: Path, rule: str)
     assert ruleset.execution_ready is False
     assert ruleset.rejections == ("Unsupported external-effect instruction: objective",)
     assert next(item.answer for item in ruleset.rules if item.rule_id == "objective") == rule
+
+
+def _cp1252_files() -> dict[str, bytes]:
+    """Real Movistar exports ship cp1252 accents inside RAZON_SOCIAL."""
+    return {
+        name: content.decode("ascii").replace("CLIENT_001", "André_001").encode("cp1252")
+        for name, content in _files().items()
+    }
+
+
+def test_publication_accepts_cp1252_encoded_sources(tmp_path: Path) -> None:
+    coordinator, repository = _coordinator(tmp_path)
+
+    result = coordinator.publish(_cp1252_files(), idempotency_key="upload-cp1252")
+
+    revision = repository.get_dataset(result["dataset_revision"])
+    assert revision is not None
+    assert len(revision.files) == 6
+    assert all(item.row_count >= 1 for item in revision.files)
+
+
+def test_status_exposes_revision_after_restart(tmp_path: Path) -> None:
+    """A restarted pod must advertise its rehydrated revision without a re-upload."""
+    coordinator, _ = _coordinator(tmp_path)
+    published = coordinator.publish(_files(), idempotency_key="upload-1")
+
+    restarted, _ = _coordinator(tmp_path)
+    restarted.rehydrate_latest()
+    status = restarted.status()
+
+    assert status["dataset_configured"] is True
+    assert status["dataset_revision"] == published["dataset_revision"]

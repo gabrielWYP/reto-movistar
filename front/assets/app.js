@@ -272,7 +272,7 @@ function renderDatasetStatus(payload) {
   status.textContent = ready ? "Publicado para 3 agentes" : "Pendiente de publicación";
   status.className = `pill ${ready ? "dataset-ready" : "neutral"}`;
   byId("dataset-hub-summary").textContent = ready
-    ? `${payload.dataset_file_count} fuentes · ${payload.dataset_bytes} bytes · administrado por Supervisor.`
+    ? `Ya cargado · ${payload.dataset_revision || "revisión activa"} · ${payload.dataset_file_count} fuentes · ${payload.dataset_bytes} bytes. No necesitas volver a subirlos.`
     : "Publica las seis fuentes oficiales una sola vez para Facturación, Cobranzas y BI.";
   const labels = { billing: "Facturación", collections: "Cobranzas", bi: "BI" };
   byId("dataset-agent-status").innerHTML = Object.entries(payload.agents || {})
@@ -288,7 +288,12 @@ async function loadDatasetStatus() {
   try {
     const response = await fetch("/api/supervisor/dataset");
     if (!response.ok) throw new Error(`Dataset status failed with ${response.status}`);
-    renderDatasetStatus(await response.json());
+    const payload = await response.json();
+    renderDatasetStatus(payload);
+    if (payload.dataset_configured && payload.dataset_revision) {
+      appState.datasetRevision = payload.dataset_revision;
+      await loadQuestions();
+    }
   } catch (error) {
     console.error(error);
     byId("supervisor-dataset-status").textContent = "Estado no disponible";
@@ -317,7 +322,7 @@ async function publishDataset() {
       headers: { "Idempotency-Key": operationKey("dataset") },
       body: form,
     });
-    const payload = await response.json();
+    const payload = await readPayload(response);
     if (!response.ok) throw new Error(payload.detail || "El dataset no es compatible.");
     appState.datasetRevision = payload.dataset_revision;
     result.textContent = `Dataset ${payload.dataset_revision} publicado para los tres especialistas.`;
@@ -336,9 +341,25 @@ async function publishDataset() {
 
 const operationKey = (scope) => `${scope}-${crypto.randomUUID()}`;
 
+async function readPayload(response) {
+  const body = await response.text();
+  try {
+    return JSON.parse(body);
+  } catch {
+    if (response.status === 413) {
+      throw new Error(
+        "El servidor rechazo la carga por tamano (limite 25 MiB). Comprime los CSV en un ZIP.",
+      );
+    }
+    throw new Error(
+      `El servidor respondio ${response.status} sin JSON. Revisa el proxy o el tamano de la carga.`,
+    );
+  }
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, options);
-  const payload = await response.json();
+  const payload = await readPayload(response);
   if (!response.ok) throw new Error(payload.detail || `Error HTTP ${response.status}`);
   return payload;
 }
@@ -382,6 +403,7 @@ async function startRun(event) {
       body: JSON.stringify({
         dataset_revision: appState.datasetRevision,
         ruleset_revision: appState.rulesetRevision,
+        rerun: true,
       }),
     });
     appState.runId = run.run_id;

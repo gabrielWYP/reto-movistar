@@ -113,9 +113,30 @@ class RunOrchestrator:
         if self.storage_guard:
             self.storage_guard()
 
-    def create_run(self, dataset: str, ruleset: str, key: str) -> RevenueAnalysisRun:
+    def _run_id(self, dataset: str, ruleset: str, attempt: int) -> str:
+        """Derive the content-addressed run id, keeping attempt 0 historically stable."""
+        parts = (dataset, ruleset) if attempt == 0 else (dataset, ruleset, f"attempt={attempt}")
+        return f"run_{self._digest(*parts)[:20]}"
+
+    def next_attempt(self, dataset: str, ruleset: str, *, limit: int = 1000) -> int:
+        """Return the first attempt number that has no run yet for these revisions."""
+        with self._connect() as connection:
+            for attempt in range(limit):
+                run_id = self._run_id(dataset, ruleset, attempt)
+                row = connection.execute(
+                    "SELECT 1 FROM runs WHERE run_id = ?", (run_id,)
+                ).fetchone()
+                if row is None:
+                    return attempt
+        raise ValueError("Re-execution limit reached for these revisions")
+
+    def create_run(
+        self, dataset: str, ruleset: str, key: str, attempt: int = 0
+    ) -> RevenueAnalysisRun:
         """Create a stable run only for compatible execution-ready revisions."""
-        digest = self._digest("create", dataset, ruleset)
+        if attempt < 0:
+            raise ValueError("Attempt must not be negative")
+        digest = self._digest("create", dataset, ruleset, f"attempt={attempt}")
         with self._connect() as connection:
             replay = self._replay(connection, key, digest)
             if replay:
@@ -126,7 +147,7 @@ class RunOrchestrator:
         if not rules.execution_ready:
             raise ValueError("Ruleset is not execution-ready")
         run = RevenueAnalysisRun(
-            run_id=f"run_{self._digest(dataset, ruleset)[:20]}",
+            run_id=self._run_id(dataset, ruleset, attempt),
             dataset_revision=dataset,
             ruleset_revision=ruleset,
         )
