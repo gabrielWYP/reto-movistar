@@ -16,20 +16,36 @@ JS = (ROOT / "front/assets/app.js").read_text(encoding="utf-8")
 def test_supervisor_ui_drives_intake_run_evidence_and_one_final_review() -> None:
     """The browser follows the durable API without intermediate approvals."""
     element_ids = (
-        "rule-questions run-progress run-findings run-validation run-package recent-runs "
+        "rule-questions run-progress run-exposure run-findings run-validation run-package "
+        "recent-runs "
         "review-form review-outcome review-reason review-annotation"
     ).split()
     for element_id in element_ids:
         assert f'id="{element_id}"' in HTML
     routes = (
         "/api/supervisor/datasets /questions /api/supervisor/rulesets "
-        "/api/supervisor/runs /start /history /evidence /package /review"
+        "/api/supervisor/runs /start /evidence /package /review"
     ).split()
     for route in routes:
         assert route in JS
     assert 'aria-live="polite"' in HTML and 'aria-busy="false"' in HTML
     assert "pollRun" in JS and "lockReview" in JS and "syncReviewReason" in JS
     assert "/api/demo" not in JS and "X-Forwarded-User" not in JS
+
+
+def test_results_are_rendered_from_committed_evidence() -> None:
+    """The phase-order strings have no findings; rendering them showed an empty panel."""
+    assert 'renderFindings(byId("run-findings"), evidence.evidence)' in JS
+    assert 'renderValidation(byId("run-validation"), evidence.evidence)' in JS
+    assert "history.history" not in JS
+
+
+def test_business_impact_is_expressed_in_money() -> None:
+    """An analyst must read the exposure, not infer it from a JSON payload."""
+    assert "renderExposure" in JS and "formatAmount" in JS
+    assert "Exposición identificada" in JS
+    assert 'style: "currency"' in JS and '"PEN"' in JS
+    assert "finding-magnitude" in JS
 
 
 def test_results_read_as_business_language_and_hide_raw_payloads() -> None:
@@ -96,3 +112,8 @@ def test_ui_request_contract_reaches_terminal_evidence(tmp_path: Path) -> None:
         ("bi", "judge", 1),
     ]
     assert all(item["content"] for item in evidence)
+    exposure = client.get(f"/api/supervisor/runs/{run}/exposure").json()
+    assert set(exposure) >= {"totals", "quantified_finding_count", "unquantified_finding_count"}
+    assert client.get(f"/api/supervisor/runs/{run}/evidence").json()["exposure"] == {
+        key: value for key, value in exposure.items() if key != "run_id"
+    }

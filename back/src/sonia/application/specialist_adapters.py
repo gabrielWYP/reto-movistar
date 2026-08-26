@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Mapping
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from time import perf_counter
 from typing import Any, Protocol
 
 from sonia.application.specialist_prompts import build_question
 from sonia.domain.orchestration import (
+    DEFAULT_CURRENCY,
     EvidenceReference,
     ExecutionMetadata,
     ExecutionPlan,
@@ -26,6 +29,7 @@ _OPERATIONS = {
     SpecialistPhase.BI: "executive_snapshot",
 }
 DatasetScope = Callable[[str, Callable[[], dict[str, Any]]], dict[str, Any]]
+logger = logging.getLogger(__name__)
 
 
 class BillingService(Protocol):
@@ -56,6 +60,44 @@ def _routed_tools(raw: dict[str, Any]) -> tuple[str, ...]:
         return tuple(str(item) for item in listed if item)
     single = raw.get("tool_used") or raw.get("tool")
     return (str(single),) if single else ()
+
+
+def _amount(value: object) -> Decimal | None:
+    """Read a monetary magnitude without trusting the specialist's number type."""
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return None
+    try:
+        amount = Decimal(str(value))
+    except (ArithmeticError, InvalidOperation, ValueError):
+        return None
+    return amount if amount >= 0 else None
+
+
+def _entity_count(item: dict[str, Any]) -> int | None:
+    """Accept the flat count Collections reports or the nested one Billing reports."""
+    for candidate in (item.get("count"), _observed(item).get("count")):
+        if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate >= 0:
+            return candidate
+    return None
+
+
+def _observed(item: dict[str, Any]) -> dict[str, Any]:
+    observed = item.get("observed_value")
+    return observed if isinstance(observed, dict) else {}
+
+
+def _finding(item: dict[str, Any], refs: tuple[str, ...]) -> Finding:
+    """Carry the magnitude the specialist already computed into the run record."""
+    amount = _amount(item.get("amount"))
+    return Finding(
+        code=str(item.get("type", "UNCLASSIFIED")),
+        summary=str(item.get("message", "Specialist finding")),
+        evidence_refs=refs,
+        severity=str(item.get("severity") or "UNSPECIFIED"),
+        amount=amount,
+        currency=str(item.get("currency") or DEFAULT_CURRENCY) if amount is not None else None,
+        entity_count=_entity_count(item),
+    )
 
 
 def _telemetry(raw: dict[str, Any], started: float) -> ExecutionMetadata:
@@ -116,7 +158,11 @@ class SpecialistAdapter:
                 raw = self._scoped(plan, lambda: replay(tool, at))
                 detail = f"deterministic replay of {tool}"
                 return raw, ValidationCheck(name="routing", passed=True, detail=detail)
-            except (KeyError, RuntimeError, TypeError, ValueError) as error:
+            except Exception as error:
+                logger.exception(
+                    "specialist_replay_failed",
+                    extra={"phase": self.phase, "run_id": plan.run_id, "tool": tool},
+                )
                 reason = f"replay of {tool} failed: {type(error).__name__}"
                 raw = self._scoped(plan, lambda: self._runner(at))
                 return raw, ValidationCheck(name="routing", passed=False, detail=reason[:160])
@@ -133,7 +179,11 @@ class SpecialistAdapter:
                 tools = ", ".join(_routed_tools(raw)) or "none reported"
                 detail = f"agent selected: {tools}"
                 return raw, ValidationCheck(name="routing", passed=True, detail=detail)
-            except (KeyError, RuntimeError, TypeError, ValueError) as error:
+            except Exception as error:
+                logger.exception(
+                    "specialist_agent_routing_failed",
+                    extra={"phase": self.phase, "run_id": plan.run_id},
+                )
                 reason = f"agent unavailable: {type(error).__name__}: {error}"
                 raw = self._scoped(plan, lambda: self._runner(at))
                 return raw, ValidationCheck(name="routing", passed=False, detail=reason[:160])
@@ -189,12 +239,9 @@ class SpecialistAdapter:
             raise ValueError("Specialist returned an invalid response envelope")
         output = _reference(f"{prefix}:result", payload)
         evidence = plan.upstream_evidence + (dataset, ruleset, output)
+        finding_refs = (dataset.evidence_id, ruleset.evidence_id, output.evidence_id)
         findings = tuple(
-            Finding(
-                code=str(item.get("type", "UNCLASSIFIED")),
-                summary=str(item.get("message", "Specialist finding")),
-                evidence_refs=(dataset.evidence_id, ruleset.evidence_id, output.evidence_id),
-            )
+            _finding(item, finding_refs)
             for item in payload.get("findings", ())
             if isinstance(item, dict)
         )

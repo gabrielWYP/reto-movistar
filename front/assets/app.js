@@ -458,6 +458,58 @@ function technicalDetail(summary, value) {
   return details;
 }
 
+function formatAmount(amount, currency) {
+  const value = Number(amount);
+  if (amount === null || amount === undefined || !Number.isFinite(value)) return null;
+  const code = currency || "PEN";
+  try {
+    return new Intl.NumberFormat("es-PE", { style: "currency", currency: code }).format(value);
+  } catch (error) {
+    return `${code} ${value.toFixed(2)}`;
+  }
+}
+
+function magnitude(finding) {
+  const parts = [];
+  const money = formatAmount(finding.amount, finding.currency);
+  if (money) parts.push(money);
+  if (Number.isInteger(finding.entity_count) && finding.entity_count > 0) {
+    parts.push(`${finding.entity_count} ${finding.entity_count === 1 ? "caso" : "casos"}`);
+  }
+  return parts.join(" \u00b7 ");
+}
+
+function renderExposure(target, exposure) {
+  if (!target) return;
+  target.replaceChildren();
+  const totals = Object.entries((exposure && exposure.totals) || {});
+  target.append(Object.assign(document.createElement("h4"), {
+    textContent: "Exposición identificada",
+  }));
+  if (!totals.length) {
+    target.append(Object.assign(document.createElement("p"), {
+      className: "muted",
+      textContent: "Esta corrida no cuantificó exposición monetaria.",
+    }));
+    return;
+  }
+  totals.forEach(([currency, amount]) => {
+    target.append(Object.assign(document.createElement("p"), {
+      className: "exposure-total",
+      textContent: formatAmount(amount, currency) || `${currency} ${amount}`,
+    }));
+  });
+  const quantified = exposure.quantified_finding_count || 0;
+  const pending = exposure.unquantified_finding_count || 0;
+  target.append(Object.assign(document.createElement("p"), {
+    className: "muted",
+    textContent:
+      `${quantified} ${quantified === 1 ? "hallazgo cuantificado" : "hallazgos cuantificados"}` +
+      `${pending ? ` \u00b7 ${pending} sin monto` : ""}` +
+      " \u00b7 no se suma dos veces un mismo código",
+  }));
+}
+
 function renderFindings(target, records) {
   target.replaceChildren();
   const specialists = records.filter((r) => r && r.kind === "specialist");
@@ -482,7 +534,16 @@ function renderFindings(target, records) {
       list.className = "finding-list";
       findings.forEach((finding) => {
         const item = document.createElement("li");
-        item.textContent = finding.summary || humanize(finding.code);
+        item.append(Object.assign(document.createElement("span"), {
+          textContent: finding.summary || humanize(finding.code),
+        }));
+        const scale = magnitude(finding);
+        if (scale) {
+          item.append(Object.assign(document.createElement("span"), {
+            className: "finding-magnitude",
+            textContent: scale,
+          }));
+        }
         list.append(item);
       });
       card.append(list);
@@ -542,13 +603,13 @@ async function pollRun() {
     window.setTimeout(pollRun, 1000);
     return;
   }
-  const [history, evidence, packageData] = await Promise.all([
-    api(`${base}/history`),
+  const [evidence, packageData] = await Promise.all([
     api(`${base}/evidence`),
     api(`${base}/package`),
   ]);
-  renderFindings(byId("run-findings"), history.history);
-  renderValidation(byId("run-validation"), history.history);
+  renderExposure(byId("run-exposure"), evidence.exposure);
+  renderFindings(byId("run-findings"), evidence.evidence);
+  renderValidation(byId("run-validation"), evidence.evidence);
   appState.packageRevision = packageData.package_revision;
   byId("run-package").replaceChildren(
     technicalDetail("Ver paquete final y evidencia", {

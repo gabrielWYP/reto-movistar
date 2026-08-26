@@ -15,6 +15,7 @@ from sonia.application.judge import Judge
 from sonia.application.specialist_adapters import SpecialistAdapter
 from sonia.domain.orchestration import (
     ExecutionPlan,
+    Finding,
     JudgeDecision,
     JudgeVerdict,
     RevenueAnalysisRun,
@@ -22,6 +23,7 @@ from sonia.domain.orchestration import (
     RunSummary,
     SpecialistPhase,
     SpecialistResult,
+    quantified_exposure,
 )
 from sonia.persistence.backup import Artifact, PackageLineageError, StorageHardener
 from sonia.persistence.operator_checkpoint import OperatorCheckpointStore
@@ -331,6 +333,31 @@ class RunOrchestrator:
                 "SELECT phase, kind FROM run_steps WHERE run_id = ? ORDER BY seq", (run_id,)
             ).fetchall()
         return tuple(row["phase"] + (":judge" if row["kind"] == "judge" else "") for row in rows)
+
+    def exposure(self, run_id: str) -> dict[str, object]:
+        """Total the quantified findings this run committed, without double counting."""
+        results = self._results(run_id)
+        findings: tuple[Finding, ...] = tuple(
+            finding for result in results for finding in result.findings
+        )
+        totals = quantified_exposure(findings)
+        quantified = [item for item in findings if item.amount is not None]
+        return {
+            "totals": {currency: str(amount) for currency, amount in totals.items()},
+            "quantified_finding_count": len(quantified),
+            "unquantified_finding_count": len(findings) - len(quantified),
+            "findings": [
+                {
+                    "code": item.code,
+                    "summary": item.summary,
+                    "severity": item.severity,
+                    "amount": str(item.amount) if item.amount is not None else None,
+                    "currency": item.currency,
+                    "entity_count": item.entity_count,
+                }
+                for item in findings
+            ],
+        }
 
     def evidence(self, run_id: str) -> tuple[dict[str, object], ...]:
         """Return immutable committed specialist and Judge contents in order."""

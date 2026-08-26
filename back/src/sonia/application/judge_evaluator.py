@@ -49,7 +49,15 @@ class OpenCodeJudgeEvaluator:
                 "status": result.status,
                 "routed_tools": list(result.routed_tools),
                 "findings": [
-                    {"code": item.code, "summary": item.summary[:400]} for item in result.findings
+                    {
+                        "code": item.code,
+                        "summary": item.summary[:400],
+                        "severity": item.severity,
+                        "amount": str(item.amount) if item.amount is not None else None,
+                        "currency": item.currency,
+                        "entity_count": item.entity_count,
+                    }
+                    for item in result.findings
                 ],
                 "recommended_actions": [item[:200] for item in result.recommended_actions],
                 "evidence_ids": [item.evidence_id for item in result.evidence_refs[:_MAX_EVIDENCE]],
