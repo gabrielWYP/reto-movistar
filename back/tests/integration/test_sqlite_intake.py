@@ -11,7 +11,7 @@ from billing_agent.datasets import DatasetRegistry
 from collections_agent.application import CollectionsBackend
 
 from sonia.application.dataset_supervisor import SupervisorDatasetCoordinator
-from sonia.persistence.sqlite import SQLiteIntakeRepository
+from sonia.persistence.sqlite import SQLiteIntakeRepository, decode_csv_text
 
 FIXTURES = Path(__file__).resolve().parents[3] / "back/tests/fixtures/supervisor"
 
@@ -130,6 +130,27 @@ def test_publication_accepts_cp1252_encoded_sources(tmp_path: Path) -> None:
     assert revision is not None
     assert len(revision.files) == 6
     assert all(item.row_count >= 1 for item in revision.files)
+
+
+def _cp1252_only_files() -> dict[str, bytes]:
+    """Bytes 0x80-0x9F are the range where cp1252 and latin1 disagree."""
+    return {
+        name: content.decode("ascii").replace("CLIENT_001", "GRUPO—001").encode("cp1252")
+        for name, content in _files().items()
+    }
+
+
+def test_publication_preserves_cp1252_only_characters(tmp_path: Path) -> None:
+    """A permissive fallback used to store “ ” — € as C1 controls without failing."""
+    coordinator, repository = _coordinator(tmp_path)
+
+    result = coordinator.publish(_cp1252_only_files(), idempotency_key="upload-cp1252-only")
+
+    revision = repository.get_dataset(result["dataset_revision"])
+    assert revision is not None
+    stored = [decode_csv_text(item.path.read_bytes()) for item in revision.files]
+    assert any("GRUPO—001" in text for text in stored)
+    assert not any(0x80 <= ord(character) <= 0x9F for text in stored for character in text)
 
 
 def test_status_exposes_revision_after_restart(tmp_path: Path) -> None:

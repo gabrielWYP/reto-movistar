@@ -75,7 +75,7 @@ class UploadReport:
 
 
 def _decode(content: bytes) -> str:
-    for encoding in ("utf-8-sig", "utf-8", "latin1", "cp1252"):
+    for encoding in ("utf-8-sig", "utf-8", "cp1252"):
         try:
             return content.decode(encoding)
         except UnicodeDecodeError:

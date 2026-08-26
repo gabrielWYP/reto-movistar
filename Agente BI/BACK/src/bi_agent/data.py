@@ -35,7 +35,7 @@ class SoniaDataset:
 
 
 def _decode_csv(content: bytes) -> list[dict[str, str]]:
-    for encoding in ("utf-8-sig", "utf-8", "latin1", "cp1252"):
+    for encoding in ("utf-8-sig", "utf-8", "cp1252"):
         try:
             reader = csv.DictReader(io.StringIO(content.decode(encoding)), delimiter="|")
             if reader.fieldnames and len(reader.fieldnames) > 1:

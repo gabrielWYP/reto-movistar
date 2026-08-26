@@ -29,7 +29,7 @@ class SoniaDataset:
 
 
 def _decode_csv(content: bytes) -> list[dict[str, str]]:
-    for encoding in ("utf-8-sig", "utf-8", "latin1", "cp1252"):
+    for encoding in ("utf-8-sig", "utf-8", "cp1252"):
         try:
             text = content.decode(encoding)
             reader = csv.DictReader(io.StringIO(text), delimiter="|")
