@@ -25,6 +25,7 @@ from sonia.domain.orchestration import (
     SpecialistResult,
     quantified_exposure,
 )
+from sonia.observability.audit import RunAuditLog
 from sonia.persistence.backup import Artifact, PackageLineageError, StorageHardener
 from sonia.persistence.operator_checkpoint import OperatorCheckpointStore
 from sonia.persistence.sqlite import SQLiteIntakeRepository
@@ -67,11 +68,13 @@ class RunOrchestrator:
         storage_guard: Callable[[], None] | None = None,
         auto_package: bool = True,
         checkpoint_store: OperatorCheckpointStore | None = None,
+        audit: RunAuditLog | None = None,
     ) -> None:
         self.database, self.intake = database.resolve(), intake
         self.adapters, self.judge = adapters, judge
         self.owner, self.lease_seconds = owner, lease_seconds
         self.storage_guard = storage_guard
+        self.audit = audit
         self.checkpoints = checkpoint_store or OperatorCheckpointStore(self.database.parent.parent)
         self.package_storage = (
             StorageHardener(self.database.parent.parent) if auto_package else None
@@ -299,10 +302,38 @@ class RunOrchestrator:
                 "recovery": recovery,
             },
         )
+        self._audit_step(run_id, phase, step)
         if advanced.state in (RunState.COMPLETED, RunState.MANUAL_REVIEW):
             if self.package_storage:
                 self.assemble_review_package(run_id, self.package_storage)
+            if self.audit is not None:
+                self.audit.publish(run_id)
         return advanced
+
+    def _audit_step(
+        self, run_id: str, phase: SpecialistPhase, step: SpecialistResult | JudgeDecision
+    ) -> None:
+        """Record the Judge's grade; the specialist exchange is recorded by its adapter."""
+        if self.audit is None or not isinstance(step, JudgeDecision):
+            return
+        self.audit.record(
+            run_id,
+            {
+                "kind": "judge",
+                "phase": str(phase),
+                "attempt": step.attempt,
+                "verdict": str(step.verdict),
+                "mode": str(step.mode),
+                "rubric": [
+                    {"name": check.name, "passed": check.passed, "detail": check.detail}
+                    for check in step.rubric
+                ],
+                "corrective_constraints": list(step.corrective_constraints),
+                "llm": {"provider": step.metadata.provider, "model": step.metadata.model},
+                "usage": {"total_tokens": step.metadata.token_count},
+                "latency_ms": step.metadata.latency_ms,
+            },
+        )
 
     def run(self, run_id: str, key_prefix: str, *, max_steps: int = 13) -> RevenueAnalysisRun:
         """Provide a bounded callable suitable for a supervised background task."""
@@ -319,6 +350,8 @@ class RunOrchestrator:
             if current.state in (RunState.COMPLETED, RunState.MANUAL_REVIEW):
                 if self.package_storage and not current.manual_reason:
                     self.assemble_review_package(run_id, self.package_storage)
+                if self.audit is not None:
+                    self.audit.publish(run_id)
                 return current
             if current.state is RunState.CREATED:
                 self.start(run_id, f"{key_prefix}:{current.version}")

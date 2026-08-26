@@ -29,6 +29,7 @@ _OPERATIONS = {
     SpecialistPhase.BI: "executive_snapshot",
 }
 DatasetScope = Callable[[str, Callable[[], dict[str, Any]]], dict[str, Any]]
+AuditRecorder = Callable[[str, dict[str, Any]], None]
 logger = logging.getLogger(__name__)
 
 
@@ -138,18 +139,48 @@ class SpecialistAdapter:
         dataset_scope: DatasetScope | None = None,
         agent: AgentBackend | None = None,
         replay: Callable[[str, str], dict[str, Any]] | None = None,
+        audit: AuditRecorder | None = None,
     ) -> None:
         self.phase, self.operation, self._runner = phase, _OPERATIONS[phase], runner
         self._dataset_scope = dataset_scope
         self._agent = agent
         self._replay = replay
+        self._audit = audit
 
     def _scoped(self, plan: ExecutionPlan, invoke: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         if self._dataset_scope is None:
             return invoke()
         return self._dataset_scope(plan.dataset_revision, invoke)
 
-    def _route(self, plan: ExecutionPlan) -> tuple[dict[str, Any], ValidationCheck]:
+    def _record(
+        self, plan: ExecutionPlan, attempt: int, question: str, raw: dict[str, Any]
+    ) -> None:
+        """Send the model exchange to the audit trail; never fail the run for it."""
+        if self._audit is None:
+            return
+        try:
+            self._audit(
+                plan.run_id,
+                {
+                    "kind": "specialist",
+                    "phase": str(self.phase),
+                    "attempt": attempt,
+                    "dataset_revision": plan.dataset_revision,
+                    "ruleset_revision": plan.ruleset_revision,
+                    "question": question,
+                    "answer": str(raw.get("answer") or ""),
+                    "tools_used": list(_routed_tools(raw)),
+                    # Collections and BI report "mode"; Billing reports "route".
+                    "route": str(raw.get("mode") or raw.get("route") or "unknown"),
+                    "usage": raw.get("usage") if isinstance(raw.get("usage"), dict) else {},
+                    "llm": raw.get("llm") if isinstance(raw.get("llm"), dict) else {},
+                    "prompt": raw.get("prompt"),
+                },
+            )
+        except Exception:
+            logger.exception("run_audit_record_failed", extra={"run_id": plan.run_id})
+
+    def _route(self, plan: ExecutionPlan, attempt: int) -> tuple[dict[str, Any], ValidationCheck]:
         """Prefer the agent, replay a prior selection, and always keep a working floor."""
         at = plan.as_of_date.isoformat()
         if plan.replay_tools and self._replay is not None:
@@ -176,6 +207,7 @@ class SpecialistAdapter:
             question = build_question(plan)
             try:
                 raw = self._scoped(plan, lambda: agent.query(question, at))
+                self._record(plan, attempt, question, raw)
                 tools = ", ".join(_routed_tools(raw)) or "none reported"
                 detail = f"agent selected: {tools}"
                 return raw, ValidationCheck(name="routing", passed=True, detail=detail)
@@ -233,7 +265,7 @@ class SpecialistAdapter:
                 ),
             )
 
-        raw, routing = self._route(plan)
+        raw, routing = self._route(plan, attempt)
         payload = raw.get("agent_response", raw)
         if not isinstance(payload, dict):
             raise ValueError("Specialist returned an invalid response envelope")
@@ -288,6 +320,7 @@ def build_specialist_adapters(
     bi: ToolBackend,
     dataset_scope: DatasetScope | None = None,
     agents: Mapping[SpecialistPhase, AgentBackend] | None = None,
+    audit: AuditRecorder | None = None,
 ) -> dict[SpecialistPhase, SpecialistAdapter]:
     """Wire agent routing over the closed tool contract, keeping a deterministic floor."""
     routed = agents or {}
@@ -302,6 +335,6 @@ def build_specialist_adapters(
         lambda tool, at: bi.execute_tool(tool, {}, at),
     )
     return {
-        phase: SpecialistAdapter(phase, runner, dataset_scope, routed.get(phase), replay)
+        phase: SpecialistAdapter(phase, runner, dataset_scope, routed.get(phase), replay, audit)
         for phase, runner, replay in zip(SpecialistPhase, runners, replays, strict=True)
     }

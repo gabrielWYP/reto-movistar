@@ -33,6 +33,8 @@ from sonia.domain.demo import DemoScenarioResponse, DemoTransitionRequest, DemoT
 from sonia.domain.health import HealthResponse
 from sonia.domain.orchestration import SpecialistPhase
 from sonia.entrypoints.run_api import create_run_router, read_dataset_uploads
+from sonia.integrations.object_store import object_store_from_environment
+from sonia.observability.audit import RunAuditLog
 from sonia.observability.logging import configure_logging
 from sonia.persistence.backup import StorageHardener
 from sonia.persistence.sqlite import SQLiteIntakeRepository
@@ -126,6 +128,7 @@ def create_app(
                 extra={"error_type": type(error).__name__},
             )
         current_billing = _CurrentBilling(billing_registry)
+        run_audit = RunAuditLog(object_store_from_environment())
         runtime_runner = RunOrchestrator(
             runtime_storage.database,
             production_intake,
@@ -139,16 +142,19 @@ def create_app(
                     SpecialistPhase.COLLECTIONS: runtime_collections_backend,
                     SpecialistPhase.BI: runtime_bi_backend,
                 },
+                run_audit.record,
             ),
             _qualitative_judge(OpenCodeRuntime()),
             owner=f"api-{uuid4()}",
             storage_guard=runtime_storage.require_ready,
+            audit=run_audit,
         )
         logger.info(
             "production_orchestration_composed",
             extra={
                 "storage_root": str(runtime_settings.storage_root),
                 "owner": runtime_runner.owner,
+                "audit_enabled": run_audit.enabled,
             },
         )
     application.mount("/api/billing", billing_application, name="billing-agent")
