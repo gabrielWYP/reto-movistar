@@ -15,6 +15,7 @@ from collections_agent.application import CollectionsBackend
 from fastapi import FastAPI, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 from sonia.application.agent_registry import get_agent, list_agents
 from sonia.application.dataset_supervisor import SupervisorDatasetCoordinator
@@ -209,7 +210,8 @@ def create_app(
             raise HTTPException(status_code=422, detail="Idempotency-Key cannot be whitespace-only")
         payload = await read_dataset_uploads(files)
         try:
-            return dataset_coordinator.publish(
+            return await run_in_threadpool(
+                dataset_coordinator.publish,
                 payload,
                 idempotency_key=idempotency_key.strip() if idempotency_key else f"compat:{uuid4()}",
             )

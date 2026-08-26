@@ -13,6 +13,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, File, Header, HTTPException, UploadFile
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from starlette.concurrency import run_in_threadpool
 
 from sonia.application.dataset_supervisor import (
     MAX_DATASET_BYTES,
@@ -349,7 +350,8 @@ def create_run_router(
         files: Annotated[list[UploadFile], File(...)], key: IdempotencyKey
     ) -> object:
         try:
-            return datasets.publish(await read_dataset_uploads(files), idempotency_key=key)
+            payload = await read_dataset_uploads(files)
+            return await run_in_threadpool(datasets.publish, payload, idempotency_key=key)
         except ValueError as error:
             status = 409 if "Conflicting idempotency" in str(error) else 422
             raise HTTPException(status_code=status, detail=str(error)) from error

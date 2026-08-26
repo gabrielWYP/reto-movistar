@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
+from sonia.application.dataset_supervisor import SupervisorDatasetCoordinator
 from sonia.config import Settings
 from sonia.entrypoints.api import create_app
 
@@ -129,3 +132,35 @@ def test_only_supervisor_frontend_exposes_manual_file_selection() -> None:
         javascript = (frontend / "assets" / "app.js").read_text(encoding="utf-8")
         assert 'type="file"' not in html
         assert "new FormData()" not in javascript
+
+
+def test_publication_runs_off_the_event_loop_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Parsing megabytes of CSV inline stalls /health and drops the pod from Service endpoints."""
+    recorded: dict[str, str] = {}
+    original = SupervisorDatasetCoordinator.publish
+
+    def recording(
+        self: SupervisorDatasetCoordinator,
+        files: dict[str, bytes],
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, object]:
+        recorded["publish"] = threading.current_thread().name
+        return original(self, files, idempotency_key=idempotency_key)
+
+    monkeypatch.setattr(SupervisorDatasetCoordinator, "publish", recording)
+    application = create_app(_settings())
+
+    @application.get("/loop-thread")
+    async def loop_thread() -> dict[str, str]:
+        recorded["loop"] = threading.current_thread().name
+        return {"thread": recorded["loop"]}
+
+    with TestClient(application) as client:
+        client.get("/loop-thread")
+        published = client.post("/api/supervisor/dataset", files=_dataset_files())
+
+    assert published.status_code == 200
+    assert recorded["publish"] != recorded["loop"]
