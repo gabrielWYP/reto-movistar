@@ -113,8 +113,13 @@ jobs:
       image-tag: ${{ needs.release.outputs.image-tag }}
       kube-namespace: reto-movistar
       public-host: reto-movistar.ikigais.app
+      oci-namespace: ${{ vars.SONIA_OCI_NAMESPACE }}
+      oci-bucket: ${{ vars.SONIA_OCI_BUCKET }}
+      oci-region: ${{ vars.SONIA_OCI_REGION }}
     secrets:
       KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
       GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
       ANALYST_HTPASSWD: ${{ secrets.ANALYST_HTPASSWD }}
       OPENCODE_KEY: ${{ secrets.OPENCODE_KEY }}
+      SONIA_OCI_ACCESS_KEY_ID: ${{ secrets.SONIA_OCI_ACCESS_KEY_ID }}
+      SONIA_OCI_SECRET_ACCESS_KEY: ${{ secrets.SONIA_OCI_SECRET_ACCESS_KEY }}
