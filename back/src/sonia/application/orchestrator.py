@@ -210,9 +210,9 @@ class RunOrchestrator:
         if ruleset is None:
             raise RuntimeError("Bound ruleset storage unavailable")
         values = {rule.rule_id: rule.answer for rule in ruleset.rules}
-        upstream = tuple(
-            ref for result in self._results(run.run_id) for ref in result.evidence_refs
-        )
+        results = self._results(run.run_id)
+        upstream = tuple(ref for result in results for ref in result.evidence_refs)
+        previous = next((item for item in reversed(results) if item.phase is phase), None)
         return ExecutionPlan(
             run_id=run.run_id,
             dataset_revision=run.dataset_revision,
@@ -221,6 +221,7 @@ class RunOrchestrator:
             phase=phase,
             global_rules=ruleset.rules,
             upstream_evidence=upstream,
+            replay_tools=previous.routed_tools if previous is not None else (),
         )
 
     def advance(self, run_id: str, expected: RunState, key: str) -> RevenueAnalysisRun:

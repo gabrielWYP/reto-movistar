@@ -10,8 +10,11 @@ from bi_agent.api import create_bi_router
 from bi_agent.application import BIBackend
 from billing_agent.app import create_app as create_billing_app
 from billing_agent.datasets import DatasetRegistry
+from billing_agent.openai_runtime import OpenAIRuntime
+from billing_agent.runtime import BillingAgentRuntime
 from collections_agent.api import create_collections_router
 from collections_agent.application import CollectionsBackend
+from collections_agent.llm_runtime import OpenCodeRuntime
 from fastapi import FastAPI, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -21,12 +24,14 @@ from sonia.application.agent_registry import get_agent, list_agents
 from sonia.application.dataset_supervisor import SupervisorDatasetCoordinator
 from sonia.application.demo_service import build_demo_scenario, transition_demo
 from sonia.application.judge import Judge
+from sonia.application.judge_evaluator import OpenCodeJudgeEvaluator
 from sonia.application.orchestrator import RunOrchestrator
 from sonia.application.specialist_adapters import build_specialist_adapters
 from sonia.config import Settings, get_settings
 from sonia.domain.agents import AgentDescriptor
 from sonia.domain.demo import DemoScenarioResponse, DemoTransitionRequest, DemoTransitionResponse
 from sonia.domain.health import HealthResponse
+from sonia.domain.orchestration import SpecialistPhase
 from sonia.entrypoints.run_api import create_run_router, read_dataset_uploads
 from sonia.observability.logging import configure_logging
 from sonia.persistence.backup import StorageHardener
@@ -41,8 +46,31 @@ class _CurrentBilling:
     def __init__(self, registry: DatasetRegistry) -> None:
         self.registry = registry
 
+    @property
+    def llm_available(self) -> bool:
+        return bool(OpenAIRuntime().available)
+
     def billing_health_snapshot(self, as_of_date: str) -> dict[str, Any]:
         return self.registry.resolve("default").service.billing_health_snapshot(as_of_date)
+
+    def query(self, question: str, as_of_date: str) -> dict[str, Any]:
+        """Let Billing route its own tools against the Supervisor-published dataset."""
+        record = self.registry.resolve("default")
+        return BillingAgentRuntime(record.service, OpenAIRuntime()).ask(question, None, as_of_date)
+
+
+def _qualitative_judge(runtime: OpenCodeRuntime) -> Judge:
+    """Grade specialist output with the model, and escalate when it cannot answer."""
+    if not runtime.available:
+        logger.info("judge_qualitative_disabled", extra={"reason": "provider_unavailable"})
+        return Judge()
+    evaluator = OpenCodeJudgeEvaluator(
+        lambda messages: runtime.complete(messages, stage="judge_rubric"),
+        runtime.output_text,
+        runtime.usage,
+        runtime.model,
+    )
+    return Judge(evaluator, qualitative_required=True)
 
 
 def create_app(
@@ -97,16 +125,22 @@ def create_app(
                 "supervisor_dataset_rehydration_failed",
                 extra={"error_type": type(error).__name__},
             )
+        current_billing = _CurrentBilling(billing_registry)
         runtime_runner = RunOrchestrator(
             runtime_storage.database,
             production_intake,
             build_specialist_adapters(
-                _CurrentBilling(billing_registry),
+                current_billing,
                 runtime_collections_backend,
                 runtime_bi_backend,
                 dataset_coordinator.execute_on_revision,
+                {
+                    SpecialistPhase.BILLING: current_billing,
+                    SpecialistPhase.COLLECTIONS: runtime_collections_backend,
+                    SpecialistPhase.BI: runtime_bi_backend,
+                },
             ),
-            Judge(),
+            _qualitative_judge(OpenCodeRuntime()),
             owner=f"api-{uuid4()}",
             storage_guard=runtime_storage.require_ready,
         )

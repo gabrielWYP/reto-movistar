@@ -118,6 +118,8 @@ class ExecutionPlan(ImmutableModel):
     global_rules: tuple[BusinessRule, ...]
     specialist_rules: tuple[BusinessRule, ...] = ()
     upstream_evidence: tuple[EvidenceReference, ...] = ()
+    replay_tools: tuple[str, ...] = ()
+    """Tools the first attempt routed, replayed deterministically to confirm it."""
 
 
 class SpecialistResult(ImmutableModel):
@@ -132,6 +134,8 @@ class SpecialistResult(ImmutableModel):
     data_quality: tuple[ValidationCheck, ...]
     recommended_actions: tuple[str, ...]
     metadata: ExecutionMetadata
+    routed_tools: tuple[str, ...] = ()
+    """Tools the specialist actually executed, whoever selected them."""
 
 
 class JudgeDecision(ImmutableModel):
