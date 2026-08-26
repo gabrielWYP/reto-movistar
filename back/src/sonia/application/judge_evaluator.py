@@ -12,10 +12,13 @@ from sonia.domain.orchestration import ExecutionMetadata, SpecialistResult, Vali
 
 logger = logging.getLogger(__name__)
 
+# The third element is whether a failure blocks the run. Integrity gates block;
+# quantification is reported to the analyst but cannot stop the analysis, because
+# a specialist may legitimately observe something that carries no magnitude.
 RUBRIC = (
-    ("evidence_supports_findings", "Cada hallazgo se apoya en la evidencia citada."),
-    ("quantified", "Los hallazgos materiales indican magnitud o alcance medible."),
-    ("within_scope", "La respuesta se mantiene dentro del alcance y la fecha de corte."),
+    ("evidence_supports_findings", "Cada hallazgo se apoya en la evidencia citada.", True),
+    ("quantified", "Los hallazgos materiales indican magnitud o alcance medible.", False),
+    ("within_scope", "La respuesta se mantiene dentro del alcance y la fecha de corte.", True),
 )
 _MAX_EVIDENCE = 12
 _MAX_ANSWER = 4000
@@ -61,7 +64,7 @@ class OpenCodeJudgeEvaluator:
                 ],
                 "recommended_actions": [item[:200] for item in result.recommended_actions],
                 "evidence_ids": [item.evidence_id for item in result.evidence_refs[:_MAX_EVIDENCE]],
-                "rubric": [{"name": name, "criterion": text} for name, text in RUBRIC],
+                "rubric": [{"name": name, "criterion": text} for name, text, _ in RUBRIC],
             },
             ensure_ascii=False,
             default=str,
@@ -115,10 +118,17 @@ def _parse_checks(text: str) -> tuple[ValidationCheck, ...]:
         if isinstance(item, dict) and item.get("name")
     }
     checks = []
-    for name, criterion in RUBRIC:
+    for name, criterion, required in RUBRIC:
         item = scored.get(name)
         if item is None:
             raise ValueError(f"El juez omitió la rúbrica '{name}'.")
         detail = str(item.get("detail") or criterion)[:200]
-        checks.append(ValidationCheck(name=name, passed=bool(item.get("passed")), detail=detail))
+        checks.append(
+            ValidationCheck(
+                name=name,
+                passed=bool(item.get("passed")),
+                detail=detail,
+                required=required,
+            )
+        )
     return tuple(checks)
