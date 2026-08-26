@@ -17,7 +17,7 @@ from pydantic import Field
 
 from sonia.domain.orchestration import BusinessRule, ImmutableModel, external_effect_rule_ids
 
-CSV_ENCODINGS = ("utf-8-sig", "utf-8", "latin1", "cp1252")
+CSV_ENCODINGS = ("utf-8-sig", "utf-8", "cp1252")
 
 
 def decode_csv_text(content: bytes) -> str:

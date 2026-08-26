@@ -503,8 +503,11 @@ class CollectionsService:
                     "overdue_share": overdue / outstanding if outstanding else Decimal(),
                 }
             )
-        max_overdue = max((row["overdue_balance"] for row in rows), default=Decimal(1))
-        max_outstanding = max((row["outstanding_balance"] for row in rows), default=Decimal(1))
+        # A portfolio with no overdue balance still scores; the divisor must never be zero.
+        max_overdue = max((row["overdue_balance"] for row in rows), default=Decimal(1)) or Decimal(1)
+        max_outstanding = (
+            max((row["outstanding_balance"] for row in rows), default=Decimal(1)) or Decimal(1)
+        )
         for row in rows:
             # Transparent score; weights and thresholds are centralized in rules.py.
             row["score_components"] = {

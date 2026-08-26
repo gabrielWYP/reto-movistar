@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -90,12 +92,38 @@ class ValidationCheck(ImmutableModel):
     required: bool = True
 
 
+# The challenge dataset bills a single currency; MONEDA is PEN on every source row.
+DEFAULT_CURRENCY = "PEN"
+
+
 class Finding(ImmutableModel):
-    """Material specialist conclusion and its evidence lineage."""
+    """Material specialist conclusion, its magnitude, and its evidence lineage."""
 
     code: str = Field(min_length=1)
     summary: str = Field(min_length=1)
     evidence_refs: tuple[str, ...]
+    severity: str = "UNSPECIFIED"
+    amount: Decimal | None = Field(default=None, ge=0)
+    currency: str | None = None
+    entity_count: int | None = Field(default=None, ge=0)
+
+
+def quantified_exposure(findings: Iterable[Finding]) -> dict[str, Decimal]:
+    """Total distinct finding codes per currency.
+
+    Two specialists can observe the same phenomenon from different sources, so
+    summing every finding would report the same soles twice. The first amount
+    seen for a code wins and later repeats of that code are ignored.
+    """
+    unique: dict[str, tuple[str, Decimal]] = {}
+    for finding in findings:
+        if finding.amount is None or finding.code in unique:
+            continue
+        unique[finding.code] = (finding.currency or DEFAULT_CURRENCY, finding.amount)
+    totals: dict[str, Decimal] = {}
+    for currency, amount in unique.values():
+        totals[currency] = totals.get(currency, Decimal()) + amount
+    return totals
 
 
 class ExecutionMetadata(ImmutableModel):
@@ -118,6 +146,8 @@ class ExecutionPlan(ImmutableModel):
     global_rules: tuple[BusinessRule, ...]
     specialist_rules: tuple[BusinessRule, ...] = ()
     upstream_evidence: tuple[EvidenceReference, ...] = ()
+    replay_tools: tuple[str, ...] = ()
+    """Tools the first attempt routed, replayed deterministically to confirm it."""
 
 
 class SpecialistResult(ImmutableModel):
@@ -132,6 +162,8 @@ class SpecialistResult(ImmutableModel):
     data_quality: tuple[ValidationCheck, ...]
     recommended_actions: tuple[str, ...]
     metadata: ExecutionMetadata
+    routed_tools: tuple[str, ...] = ()
+    """Tools the specialist actually executed, whoever selected them."""
 
 
 class JudgeDecision(ImmutableModel):

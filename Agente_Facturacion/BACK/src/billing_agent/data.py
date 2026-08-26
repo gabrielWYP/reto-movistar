@@ -84,7 +84,7 @@ class FileDatasetSource:
 def _decode_csv(content: bytes, logical_table: str) -> list[dict[str, str]]:
     if not content or not content.strip():
         raise DatasetValidationError("El archivo CSV está vacío.", source=TABLE_FILES[logical_table])
-    for encoding in ("utf-8-sig", "utf-8", "latin1", "cp1252"):
+    for encoding in ("utf-8-sig", "utf-8", "cp1252"):
         try:
             text = content.decode(encoding)
         except UnicodeDecodeError:

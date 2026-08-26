@@ -422,7 +422,18 @@ def create_run_router(
     @router.get("/runs/{run_id}/evidence")
     def evidence(run_id: str) -> dict[str, object]:
         try:
-            return {"run_id": run_id, "evidence": runner.evidence(run_id)}
+            return {
+                "run_id": run_id,
+                "evidence": runner.evidence(run_id),
+                "exposure": runner.exposure(run_id),
+            }
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Run not found") from error
+
+    @router.get("/runs/{run_id}/exposure")
+    def exposure(run_id: str) -> dict[str, object]:
+        try:
+            return {"run_id": run_id, **runner.exposure(run_id)}
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Run not found") from error
 

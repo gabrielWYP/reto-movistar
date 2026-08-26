@@ -184,6 +184,18 @@ class OpenCodeRuntime:
             )
         return response
 
+    def complete(self, messages: list[dict[str, Any]], *, stage: str) -> dict[str, Any]:
+        """Create a bounded completion with no tools, for grading and summarisation."""
+        return self._invoke(
+            {
+                "model": self.model,
+                "messages": messages,
+                "temperature": 0,
+                "max_tokens": self._settings.max_output_tokens,
+            },
+            stage,
+        )
+
     @staticmethod
     def function_calls(response: dict[str, Any]) -> list[dict[str, Any]]:
         try:

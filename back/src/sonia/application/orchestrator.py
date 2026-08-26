@@ -15,6 +15,7 @@ from sonia.application.judge import Judge
 from sonia.application.specialist_adapters import SpecialistAdapter
 from sonia.domain.orchestration import (
     ExecutionPlan,
+    Finding,
     JudgeDecision,
     JudgeVerdict,
     RevenueAnalysisRun,
@@ -22,7 +23,9 @@ from sonia.domain.orchestration import (
     RunSummary,
     SpecialistPhase,
     SpecialistResult,
+    quantified_exposure,
 )
+from sonia.observability.audit import RunAuditLog
 from sonia.persistence.backup import Artifact, PackageLineageError, StorageHardener
 from sonia.persistence.operator_checkpoint import OperatorCheckpointStore
 from sonia.persistence.sqlite import SQLiteIntakeRepository
@@ -65,11 +68,13 @@ class RunOrchestrator:
         storage_guard: Callable[[], None] | None = None,
         auto_package: bool = True,
         checkpoint_store: OperatorCheckpointStore | None = None,
+        audit: RunAuditLog | None = None,
     ) -> None:
         self.database, self.intake = database.resolve(), intake
         self.adapters, self.judge = adapters, judge
         self.owner, self.lease_seconds = owner, lease_seconds
         self.storage_guard = storage_guard
+        self.audit = audit
         self.checkpoints = checkpoint_store or OperatorCheckpointStore(self.database.parent.parent)
         self.package_storage = (
             StorageHardener(self.database.parent.parent) if auto_package else None
@@ -210,9 +215,9 @@ class RunOrchestrator:
         if ruleset is None:
             raise RuntimeError("Bound ruleset storage unavailable")
         values = {rule.rule_id: rule.answer for rule in ruleset.rules}
-        upstream = tuple(
-            ref for result in self._results(run.run_id) for ref in result.evidence_refs
-        )
+        results = self._results(run.run_id)
+        upstream = tuple(ref for result in results for ref in result.evidence_refs)
+        previous = next((item for item in reversed(results) if item.phase is phase), None)
         return ExecutionPlan(
             run_id=run.run_id,
             dataset_revision=run.dataset_revision,
@@ -221,6 +226,7 @@ class RunOrchestrator:
             phase=phase,
             global_rules=ruleset.rules,
             upstream_evidence=upstream,
+            replay_tools=previous.routed_tools if previous is not None else (),
         )
 
     def advance(self, run_id: str, expected: RunState, key: str) -> RevenueAnalysisRun:
@@ -296,10 +302,38 @@ class RunOrchestrator:
                 "recovery": recovery,
             },
         )
+        self._audit_step(run_id, phase, step)
         if advanced.state in (RunState.COMPLETED, RunState.MANUAL_REVIEW):
             if self.package_storage:
                 self.assemble_review_package(run_id, self.package_storage)
+            if self.audit is not None:
+                self.audit.publish(run_id)
         return advanced
+
+    def _audit_step(
+        self, run_id: str, phase: SpecialistPhase, step: SpecialistResult | JudgeDecision
+    ) -> None:
+        """Record the Judge's grade; the specialist exchange is recorded by its adapter."""
+        if self.audit is None or not isinstance(step, JudgeDecision):
+            return
+        self.audit.record(
+            run_id,
+            {
+                "kind": "judge",
+                "phase": str(phase),
+                "attempt": step.attempt,
+                "verdict": str(step.verdict),
+                "mode": str(step.mode),
+                "rubric": [
+                    {"name": check.name, "passed": check.passed, "detail": check.detail}
+                    for check in step.rubric
+                ],
+                "corrective_constraints": list(step.corrective_constraints),
+                "llm": {"provider": step.metadata.provider, "model": step.metadata.model},
+                "usage": {"total_tokens": step.metadata.token_count},
+                "latency_ms": step.metadata.latency_ms,
+            },
+        )
 
     def run(self, run_id: str, key_prefix: str, *, max_steps: int = 13) -> RevenueAnalysisRun:
         """Provide a bounded callable suitable for a supervised background task."""
@@ -316,6 +350,8 @@ class RunOrchestrator:
             if current.state in (RunState.COMPLETED, RunState.MANUAL_REVIEW):
                 if self.package_storage and not current.manual_reason:
                     self.assemble_review_package(run_id, self.package_storage)
+                if self.audit is not None:
+                    self.audit.publish(run_id)
                 return current
             if current.state is RunState.CREATED:
                 self.start(run_id, f"{key_prefix}:{current.version}")
@@ -330,6 +366,31 @@ class RunOrchestrator:
                 "SELECT phase, kind FROM run_steps WHERE run_id = ? ORDER BY seq", (run_id,)
             ).fetchall()
         return tuple(row["phase"] + (":judge" if row["kind"] == "judge" else "") for row in rows)
+
+    def exposure(self, run_id: str) -> dict[str, object]:
+        """Total the quantified findings this run committed, without double counting."""
+        results = self._results(run_id)
+        findings: tuple[Finding, ...] = tuple(
+            finding for result in results for finding in result.findings
+        )
+        totals = quantified_exposure(findings)
+        quantified = [item for item in findings if item.amount is not None]
+        return {
+            "totals": {currency: str(amount) for currency, amount in totals.items()},
+            "quantified_finding_count": len(quantified),
+            "unquantified_finding_count": len(findings) - len(quantified),
+            "findings": [
+                {
+                    "code": item.code,
+                    "summary": item.summary,
+                    "severity": item.severity,
+                    "amount": str(item.amount) if item.amount is not None else None,
+                    "currency": item.currency,
+                    "entity_count": item.entity_count,
+                }
+                for item in findings
+            ],
+        }
 
     def evidence(self, run_id: str) -> tuple[dict[str, object], ...]:
         """Return immutable committed specialist and Judge contents in order."""
