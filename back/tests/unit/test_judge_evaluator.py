@@ -65,7 +65,7 @@ def _evaluator(text: str, usage: dict[str, int] | None = None) -> OpenCodeJudgeE
 
 def _verdict(passed: bool) -> str:
     return json.dumps(
-        {"checks": [{"name": name, "passed": passed, "detail": text} for name, text in RUBRIC]}
+        {"checks": [{"name": name, "passed": passed, "detail": text} for name, text, _ in RUBRIC]}
     )
 
 
@@ -78,7 +78,7 @@ def test_model_graded_pass_is_recorded_with_its_telemetry() -> None:
     assert decision.mode is JudgeMode.MODEL
     assert decision.metadata.model == "deepseek-v4-flash"
     assert decision.metadata.token_count == 420
-    assert {item.name for item in decision.rubric} == {name for name, _ in RUBRIC}
+    assert {item.name for item in decision.rubric} == {name for name, _, _ in RUBRIC}
 
 
 def test_rubric_failure_retries_once_then_escalates() -> None:
@@ -117,3 +117,35 @@ def test_the_grader_receives_the_evidence_identifiers() -> None:
     payload = evaluator.captured[0][1]["content"]  # type: ignore[attr-defined]
     assert _EVIDENCE.evidence_id in payload
     assert "OVERDUE_CONCENTRATION" in payload
+
+
+def _mixed_verdict(failing: str) -> str:
+    return json.dumps(
+        {
+            "checks": [
+                {"name": name, "passed": name != failing, "detail": text}
+                for name, text, _ in RUBRIC
+            ]
+        }
+    )
+
+
+def test_unquantified_findings_are_reported_without_stopping_the_analysis() -> None:
+    """Billing observes data quality, which carries no soles; blocking there would
+    keep the analyst from ever reaching the phases that do quantify."""
+    judge = Judge(_evaluator(_mixed_verdict("quantified")), qualitative_required=True)
+
+    decision = judge.evaluate(_result())
+
+    assert decision.verdict is JudgeVerdict.PASS
+    quantified = next(item for item in decision.rubric if item.name == "quantified")
+    assert quantified.passed is False and quantified.required is False
+
+
+def test_an_unsupported_finding_still_blocks() -> None:
+    """Evidence integrity is not advisory."""
+    judge = Judge(
+        _evaluator(_mixed_verdict("evidence_supports_findings")), qualitative_required=True
+    )
+
+    assert judge.evaluate(_result()).verdict is JudgeVerdict.RETRY
