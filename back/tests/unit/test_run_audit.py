@@ -119,6 +119,22 @@ def test_an_unreachable_bucket_never_fails_the_run() -> None:
     assert audit.publish("run-1") is None
 
 
+def test_a_failed_publication_keeps_the_record_for_a_later_attempt() -> None:
+    """Discarding the buffer on failure would lose the very evidence being audited."""
+    store = StoreStub(fails=True)
+    audit = RunAuditLog(store)
+    audit.record("run-1", {"kind": "judge", "verdict": "PASS"})
+
+    assert audit.publish("run-1") is None
+    assert audit.pending("run-1") == 1
+
+    store._fails = False
+
+    assert audit.publish("run-1") is not None
+    assert audit.pending("run-1") == 0
+    assert verify_chain(_records(store))
+
+
 def test_an_unconfigured_bucket_records_nothing() -> None:
     audit = RunAuditLog(NullObjectStore())
     audit.record("run-1", {"kind": "judge", "verdict": "PASS"})

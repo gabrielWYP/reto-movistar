@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import logging
 import os
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from types import TracebackType
@@ -24,6 +25,11 @@ logger = logging.getLogger(__name__)
 ALGORITHM = "AWS4-HMAC-SHA256"
 SERVICE = "s3"
 REQUEST_TIMEOUT_SECONDS = 30
+MAX_ATTEMPTS = 4
+BACKOFF_SECONDS = 1.5
+# A freshly issued Customer Secret Key is not on every regional replica yet, so a
+# correctly signed request can still be rejected while it propagates.
+_RETRYABLE_CODES = ("SignatureDoesNotMatch", "RequestTimeTooSkewed", "InternalError")
 _SIGNED_HEADERS = ("content-type", "host", "x-amz-content-sha256", "x-amz-date")
 
 
@@ -146,22 +152,53 @@ class OciObjectStore:
         )
         return headers
 
-    def put(self, key: str, body: bytes, content_type: str) -> str | None:
-        """Store one immutable object, returning its URL."""
-        url = f"https://{self.host}{self._canonical_uri(key)}"
+    def _attempt(self, url: str, key: str, body: bytes, content_type: str) -> None:
         headers = self._headers(key, body, content_type, datetime.now(UTC))
         request = Request(url, data=body, headers=headers, method="PUT")
-        try:
-            with self._opener(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-                logger.info(
-                    "object_stored",
-                    extra={"key": key, "bytes": len(body), "status": response.status},
-                )
-        except HTTPError as error:
-            raise RuntimeError(f"Object storage returned HTTP {error.code}") from error
-        except (TimeoutError, URLError) as error:
-            raise RuntimeError("Object storage is unreachable") from error
+        with self._opener(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            logger.info(
+                "object_stored",
+                extra={"key": key, "bytes": len(body), "status": response.status},
+            )
+
+    def put(self, key: str, body: bytes, content_type: str) -> str | None:
+        """Store one immutable object, returning its URL.
+
+        Each attempt is signed afresh, because the signature covers the timestamp.
+        """
+        url = f"https://{self.host}{self._canonical_uri(key)}"
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                self._attempt(url, key, body, content_type)
+                return url
+            except HTTPError as error:
+                detail = _error_code(error)
+                if attempt == MAX_ATTEMPTS or not (error.code >= 500 or detail in _RETRYABLE_CODES):
+                    raise RuntimeError(
+                        f"Object storage returned HTTP {error.code} ({detail})"
+                    ) from error
+                reason: str = detail
+            except (TimeoutError, URLError) as error:
+                if attempt == MAX_ATTEMPTS:
+                    raise RuntimeError("Object storage is unreachable") from error
+                reason = type(error).__name__
+            logger.warning(
+                "object_store_retry",
+                extra={"key": key, "attempt": attempt, "reason": reason},
+            )
+            time.sleep(BACKOFF_SECONDS * attempt)
         return url
+
+
+def _error_code(error: HTTPError) -> str:
+    """Read the S3-style error code so a transient rejection is distinguishable."""
+    try:
+        payload = error.read().decode("utf-8", "replace")
+    except OSError:
+        return "unreadable"
+    if "<Code>" not in payload:
+        return "unknown"
+    return payload.split("<Code>", 1)[1].split("</Code>", 1)[0][:64]
 
 
 def object_store_from_environment() -> ObjectStore:

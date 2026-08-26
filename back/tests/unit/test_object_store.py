@@ -1,14 +1,18 @@
 """Signed writes to the OCI S3-compatible endpoint."""
 
 import hashlib
+import io
 from collections.abc import Callable
 from datetime import UTC, datetime
 from types import TracebackType
+from urllib.error import HTTPError
 from urllib.request import Request
 
 import pytest
 
+import sonia.integrations.object_store as object_store_module
 from sonia.integrations.object_store import (
+    MAX_ATTEMPTS,
     NullObjectStore,
     OciObjectStore,
     object_store_from_environment,
@@ -141,3 +145,70 @@ def test_complete_credentials_build_the_oci_store(monkeypatch: pytest.MonkeyPatc
     assert isinstance(store, OciObjectStore)
     assert store.configured is True
     assert store.host == f"{NAMESPACE}.compat.objectstorage.{REGION}.oraclecloud.com"
+
+
+def _http_error(code: int, error_code: str) -> HTTPError:
+    payload = f"<Error><Code>{error_code}</Code></Error>".encode()
+    return HTTPError("https://example.invalid", code, "denied", {}, io.BytesIO(payload))
+
+
+class _FlakyOpener:
+    """Reject the first attempts the way a freshly issued key is rejected."""
+
+    def __init__(self, failures: int, error: HTTPError | None = None) -> None:
+        self.remaining, self.calls = failures, 0
+        self._error = error
+
+    def __call__(self, request: Request, timeout: int = 0) -> _Response:
+        self.calls += 1
+        if self.remaining > 0:
+            self.remaining -= 1
+            raise self._error or _http_error(403, "SignatureDoesNotMatch")
+        return _Response()
+
+
+def test_a_propagating_credential_is_retried_until_it_lands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OCI rejects a correctly signed request while the secret key replicates."""
+    monkeypatch.setattr(object_store_module, "BACKOFF_SECONDS", 0)
+    opener = _FlakyOpener(2)
+
+    url = _store(opener).put("audit/x.gz", b"body", "application/gzip")
+
+    assert url is not None
+    assert opener.calls == 3
+
+
+def test_retries_are_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(object_store_module, "BACKOFF_SECONDS", 0)
+    opener = _FlakyOpener(MAX_ATTEMPTS + 5)
+
+    with pytest.raises(RuntimeError, match="SignatureDoesNotMatch"):
+        _store(opener).put("audit/x.gz", b"body", "application/gzip")
+
+    assert opener.calls == MAX_ATTEMPTS
+
+
+def test_a_missing_bucket_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Retrying a permanent rejection only delays the failure."""
+    monkeypatch.setattr(object_store_module, "BACKOFF_SECONDS", 0)
+    opener = _FlakyOpener(3, _http_error(404, "NoSuchBucket"))
+
+    with pytest.raises(RuntimeError, match="NoSuchBucket"):
+        _store(opener).put("audit/x.gz", b"body", "application/gzip")
+
+    assert opener.calls == 1
+
+
+def test_each_attempt_is_signed_afresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The signature covers the timestamp, so a stale one would fail forever."""
+    monkeypatch.setattr(object_store_module, "BACKOFF_SECONDS", 0)
+    opener = _Opener()
+    store = _store(opener)
+
+    store.put("audit/x.gz", b"body", "application/gzip")
+    store.put("audit/x.gz", b"body", "application/gzip")
+
+    dates = [request.get_header("X-amz-date") for request in opener.requests]
+    assert all(dates) and len(dates) == 2

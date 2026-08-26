@@ -74,11 +74,11 @@ class RunAuditLog:
             return len(self._buffers.get(run_id, ()))
 
     def publish(self, run_id: str) -> str | None:
-        """Compress and store the sealed record, then release the buffer."""
+        """Compress and store the sealed record, releasing the buffer only once stored."""
         if not self.enabled:
             return None
         with self._lock:
-            records = self._buffers.pop(run_id, [])
+            records = list(self._buffers.get(run_id, ()))
         if not records:
             return None
         body = gzip.compress(b"\n".join(_canonical(record) for record in records) + b"\n", mtime=0)
@@ -86,8 +86,11 @@ class RunAuditLog:
         try:
             url = self._store.put(key, body, CONTENT_TYPE)
         except RuntimeError:
+            # Keep the buffer: a later publication can still store the sealed record.
             logger.exception("run_audit_publish_failed", extra={"run_id": run_id, "key": key})
             return None
+        with self._lock:
+            self._buffers.pop(run_id, None)
         logger.info(
             "run_audit_published",
             extra={"run_id": run_id, "key": key, "records": len(records), "bytes": len(body)},
