@@ -4,7 +4,7 @@ const demo = window.SONIA_BILLING_UI.demo;
 const state = {
   view: "summary", datasetId: "default", asOf: "", customer: demo.customer,
   account: demo.account, invoice: demo.arithmeticInvoice, threshold: "", question: "¿Qué debería revisar hoy?",
-  context: {}, datasetStatus: null
+  context: {}, datasetStatus: null, workQueue: null, queueFilter: "all"
 };
 const $ = selector => document.querySelector(selector);
 const escapeHtml = value => String(value ?? "—").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
@@ -14,6 +14,22 @@ const percent = value => typeof value === "number" ? new Intl.NumberFormat("es-P
 const displayDate = value => value ? String(value).split("-").reverse().join("/") : "—";
 const plantStatusLabel = value => ({Active:"Activa",Activo:"Activa",Inactive:"Inactiva",Inactivo:"Inactiva"}[value] || value);
 const apiBase = String(window.SONIA_BILLING_UI.apiBase || "/api").replace(/\/$/, "");
+
+function moneyByCurrency(value, currency) {
+  if (typeof value !== "number") return "No cuantificable";
+  if (!currency) return `${new Intl.NumberFormat("es-PE", {minimumFractionDigits:2, maximumFractionDigits:2}).format(value)} · moneda no informada`;
+  try {
+    return new Intl.NumberFormat("es-PE", {style:"currency", currency}).format(value);
+  } catch (_error) {
+    return `${currency} ${new Intl.NumberFormat("es-PE", {minimumFractionDigits:2, maximumFractionDigits:2}).format(value)}`;
+  }
+}
+
+function caseAmount(item) {
+  if (typeof item.amount === "number") return moneyByCurrency(item.amount, item.currency);
+  const amounts = item.amounts_by_currency || [];
+  return amounts.length ? amounts.map(entry => moneyByCurrency(entry.amount, entry.currency)).join(" + ") : "No cuantificable";
+}
 
 function apiEndpoint(path) {
   if (path === apiBase || path.startsWith(apiBase + "/") || path.startsWith(apiBase + "?")) return path;
@@ -131,22 +147,80 @@ function technical(payload) {
   return `<details><summary>Ver trazabilidad técnica · AgentResponse v1.0</summary><pre>${escapeHtml(JSON.stringify(payload,null,2))}</pre></details>`;
 }
 
-function renderSummary(payload, presentation) {
-  const m = payload.metrics || {}, exceptions = m.exception_counts || {};
-  return `<div class="narrative">${escapeHtml(presentation.narrative)}</div>
-  <section class="section"><h2>Estado general</h2><p>Universo documental procesado por las reglas del backend.</p><div class="kpis">
-    <div class="kpi"><span>Facturas analizadas</span><strong>${number(m.invoice_documents)}</strong></div>
-    <div class="kpi"><span>Notas de crédito</span><strong>${number(m.credit_note_documents)}</strong></div>
-    <div class="kpi"><span>NC materiales</span><strong>${number(m.material_credit_note_count)}</strong></div>
-    <div class="kpi"><span>Validaciones aritméticas</span><strong>${number(exceptions.ARITHMETIC_MISMATCH || 0)}</strong></div>
-    <div class="kpi"><span>Posibles quiebres</span><strong>${number(m.cycle_gap_candidates)}</strong></div>
-  </div></section>
-  <section class="section"><h2>¿Qué requiere atención?</h2><p>Primero assurance accionable; después, calidad y cobertura. Sin scoring agregado por la interfaz.</p><div class="priority-grid">
-    <div class="priority"><b>Revisión</b><strong>${number(m.material_credit_note_count)}</strong><span>Ajustes post-emisión materiales</span></div>
-    <div class="priority"><b>Revisión</b><strong>${number(m.cycle_gap_candidates)}</strong><span>Posibles quiebres documentales</span></div>
-    <div class="priority"><b>Revisión</b><strong>${number(exceptions.ARITHMETIC_MISMATCH || 0)}</strong><span>Diferencias aritméticas</span></div>
-  </div></section>
-  <section class="section"><h2>Calidad y cobertura de datos</h2><p>El agente distingue evidencia disponible de información que requiere validación externa.</p><div class="kpis"><div class="kpi"><span>Planta → Facturación · señal exploratoria</span><strong>${number(m.active_plant_without_invoice_candidates)}</strong></div><div class="kpi"><span>Facturación → Planta · cuentas sin enlace</span><strong>${number(payload.data_quality?.join_coverage?.unmatched_to_plant)}</strong></div></div>${findings(payload,presentation)}</section>${technical(payload)}`;
+function csvCell(value) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function downloadWorkQueue(cases) {
+  const headers = ["Prioridad", "Categoría de riesgo", "Cliente", "Cuenta", "Factura", "Periodo", "Hallazgo", "Monto involucrado", "Moneda", "Evidencia resumida", "Acción recomendada"];
+  const rows = cases.map(item => [
+    item.priority, item.risk_category, item.customer, item.account, item.invoice_id,
+    item.period, item.title, typeof item.amount === "number" ? item.amount.toLocaleString("es-PE", {useGrouping:false, minimumFractionDigits:2, maximumFractionDigits:2}) : "",
+    item.currency, item.evidence_summary, item.recommended_action
+  ]);
+  const csv = "\uFEFF" + [headers, ...rows].map(row => row.map(csvCell).join(";")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8"}));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `casos_facturacion_${state.asOf || "corte"}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function selectView(view) {
+  state.view = view;
+  document.querySelectorAll(".nav button").forEach(item => item.classList.toggle("active", item.dataset.view === view));
+  controls();
+  loadView();
+}
+
+function openCase(item) {
+  const target = item.drilldown || {};
+  if (target.customer_id) state.customer = target.customer_id;
+  if (target.account_id) state.account = target.account_id;
+  if (target.invoice_id) state.invoice = target.invoice_id;
+  selectView(target.view || "invoice");
+}
+
+function workQueueRows(cases) {
+  if (!cases.length) return `<div class="empty">No hay casos accionables para el filtro seleccionado.</div>`;
+  return `<div class="table-wrap work-queue-table"><table><thead><tr><th>Prioridad</th><th>Categoría de riesgo</th><th>Cliente</th><th>Cuenta</th><th>Factura / periodo</th><th>Qué detectó COBI</th><th>Monto involucrado</th><th>Acción recomendada</th></tr></thead><tbody>${cases.map(item => `<tr>
+    <td><span class="badge ${escapeHtml(item.priority)}">${escapeHtml({HIGH:"Alta",MEDIUM:"Media",LOW:"Baja"}[item.priority] || item.priority)}</span></td>
+    <td>${escapeHtml(item.risk_category)}</td><td>${escapeHtml(item.customer)}</td><td>${escapeHtml(item.account)}</td>
+    <td><strong>${escapeHtml(item.invoice_id || item.period)}</strong>${item.invoice_id && item.period ? `<small>${escapeHtml(item.period)}</small>` : ""}</td>
+    <td><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.evidence_summary)}</p></td>
+    <td><strong>${escapeHtml(caseAmount(item))}</strong><small>${escapeHtml(item.amount_basis)}</small></td>
+    <td><p>${escapeHtml(item.recommended_action)}</p><button class="button secondary case-drilldown" type="button" data-case-id="${escapeHtml(item.case_id)}">Investigar caso</button></td>
+  </tr>`).join("")}</tbody></table></div>`;
+}
+
+function renderWorkQueue(queue, filter = state.queueFilter) {
+  state.workQueue = queue;
+  state.queueFilter = filter;
+  const summary = queue.summary || {};
+  const cases = filter === "all" ? queue.cases : queue.cases.filter(item => item.risk_category === filter);
+  const amounts = summary.quantifiable_amounts_by_currency || [];
+  const categoryCounts = summary.risk_category_counts || {};
+  const categories = ["Riesgo de ingreso", "Ajustes post-emisión", "Calidad documental"];
+  const amountHtml = amounts.length ? amounts.map(item => `<span>${escapeHtml(moneyByCurrency(item.amount, item.currency))}</span>`).join("") : "<span>Sin monto agregable</span>";
+  const technicalCases = cases.map(item => `<details><summary>${escapeHtml(item.case_id)} · Ver trazabilidad técnica</summary><pre>${escapeHtml(JSON.stringify(item.technical_trace, null, 2))}</pre></details>`).join("");
+  $("#content").innerHTML = `<div class="narrative"><strong>Bandeja automática de revisión.</strong> SON-IA agrupó las señales existentes en casos únicos y priorizados. Ningún monto representa pérdida confirmada.</div>
+  <section class="section"><h2>Estado operativo</h2><div class="kpis work-queue-kpis">
+    <div class="kpi"><span>Facturas analizadas</span><strong>${number(summary.invoice_documents)}</strong></div>
+    <div class="kpi"><span>Facturas sin observaciones documentales detectadas</span><strong>${number(summary.invoices_without_documentary_findings)}</strong></div>
+    <div class="kpi attention"><span>Casos que requieren atención</span><strong>${number(summary.cases_requiring_attention)}</strong></div>
+    <div class="kpi"><span>Monto cuantificable asociado</span><strong class="amount-stack">${amountHtml}</strong></div>
+  </div><p class="scope-note">“Sin observaciones detectadas” significa que la factura pasó las validaciones disponibles con las fuentes conectadas. No valida PxQ contractual.</p></section>
+  <section class="section"><div class="section-heading"><div><h2>Resumen por riesgo</h2><p>Filtra la bandeja sin modificar la priorización del backend.</p></div><button id="download-queue" class="button secondary" type="button">Descargar casos que requieren atención (.csv)</button></div>
+    <div class="risk-grid"><button type="button" class="risk-card ${filter === "all" ? "active" : ""}" data-queue-filter="all"><span>Todos los casos</span><strong>${number(summary.cases_requiring_attention)}</strong></button>${categories.map(category => `<button type="button" class="risk-card ${filter === category ? "active" : ""}" data-queue-filter="${escapeHtml(category)}"><span>${escapeHtml(category)}</span><strong>${number(categoryCounts[category] || 0)}</strong></button>`).join("")}</div>
+  </section>
+  <section class="section"><h2>Casos que requieren atención</h2><p>${number(cases.length)} casos visibles · ordenados por prioridad y monto comparable dentro de cada moneda.</p>${workQueueRows(cases)}</section>
+  <section class="section queue-trace"><h2>Trazabilidad técnica</h2><p>Detalle auditable separado de la bandeja operativa.</p>${technicalCases || `<div class="empty">Sin trazas para el filtro seleccionado.</div>`}</section>`;
+  document.querySelectorAll("[data-queue-filter]").forEach(button => button.onclick = () => renderWorkQueue(queue, button.dataset.queueFilter));
+  document.querySelectorAll("[data-case-id]").forEach(button => button.onclick = () => openCase(queue.cases.find(item => item.case_id === button.dataset.caseId)));
+  $("#download-queue").onclick = () => downloadWorkQueue(queue.cases);
 }
 
 function renderCustomer(payload, presentation) {
@@ -179,8 +253,10 @@ function renderNotes(payload,presentation) {
 
 function renderTool(envelope) {
   const payload=envelope.agent_response, presentation=envelope.presentation;
-  const renderers={billing_health_snapshot:renderSummary,customer_billing_check:renderCustomer,invoice_quality_check:renderInvoice,billing_cycle_gaps:renderGaps,credit_note_review:renderNotes};
-  $("#content").innerHTML=(renderers[payload.operation]||renderSummary)(payload,presentation);
+  const renderers={customer_billing_check:renderCustomer,invoice_quality_check:renderInvoice,billing_cycle_gaps:renderGaps,credit_note_review:renderNotes};
+  const renderer=renderers[payload.operation];
+  if (!renderer) throw new Error(`Operación no soportada por esta vista: ${payload.operation}`);
+  $("#content").innerHTML=renderer(payload,presentation);
   $("#feedback").className="notice";
   $("#feedback").textContent=`Análisis completado · ${payload.operation} · ${presentation.status_labels?.billing_assurance || "Resultado disponible"}`;
 }
@@ -208,6 +284,12 @@ async function loadView() {
       else answerTarget.textContent = String(result.answer || "");
       return;
     }
+    if (state.view==="summary") {
+      renderWorkQueue(await requestJson(apiUrl("/api/work-queue", {as_of_date:state.asOf})));
+      $("#feedback").className="notice";
+      $("#feedback").textContent="Bandeja actualizada · casos agrupados y priorizados por reglas verificables";
+      return;
+    }
     let path="/api/health", params={as_of_date:state.asOf};
     if(state.view==="customer"){path="/api/customer";params={...params,customer_id:state.customer,account_id:state.account}}
     if(state.view==="invoice"){path="/api/invoice";params={...params,invoice_id:state.invoice}}
@@ -220,6 +302,6 @@ async function loadView() {
   }
 }
 
-document.querySelectorAll(".nav button").forEach(button=>button.onclick=()=>{state.view=button.dataset.view;document.querySelectorAll(".nav button").forEach(item=>item.classList.toggle("active",item===button));controls();loadView()});
+document.querySelectorAll(".nav button").forEach(button=>button.onclick=()=>selectView(button.dataset.view));
 
 (async function initialize(){try{const ready=await refreshDatasetStatus("default");controls();ready?await loadView():showDatasetNotConfigured()}catch(error){controls();$("#feedback").className="notice error";$("#feedback").textContent=error.message;$("#content").innerHTML='<div class="empty">No fue posible consultar el estado de la fuente de datos.</div>'}})();
