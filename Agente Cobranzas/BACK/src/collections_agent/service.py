@@ -5,13 +5,21 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict, cast
 
 from .contracts import AgentResponse
 from .data import SoniaDataset, load_dataset
 from .ledger import InvoiceLedger, Ledger, build_ledger, by_customer
-from .rules import PRIORITY_WEIGHTS, TOLERANCE, aging_bucket, priority_level
+from .rules import (
+    EXCEPTION_SEVERITY_ORDER,
+    PRIORITY_DPD_CAP,
+    PRIORITY_WEIGHTS,
+    TOLERANCE,
+    aging_bucket,
+    priority_level,
+)
 
 ZERO = Decimal()
 RATIO_PRECISION = Decimal("0.0001")
@@ -26,6 +34,7 @@ class PriorityRow(TypedDict):
     overdue_balance: Decimal
     max_days_past_due: int
     overdue_share: Decimal
+    partial_payment_invoice_count: int
     score_components: NotRequired[dict[str, Decimal]]
     priority_score: NotRequired[Decimal]
     priority: NotRequired[str]
@@ -230,15 +239,21 @@ class CollectionsService:
             metrics=metrics,
             kpis=kpis,
             aging=self._aging(invoices, as_of),
-            findings=[
-                {
-                    "type": "UNMATCHED_PAYMENT_CUTOFF",
-                    "severity": "MEDIUM",
-                    "message": "Pagos que apuntan a documentos no presentes en el corte de facturas.",
-                    "count": len(self.ledger.unmatched_payments),
-                    "amount": metrics["unmatched_payment_amount"],
-                }
-            ],
+            findings=(
+                [
+                    {
+                        "type": "UNMATCHED_PAYMENT_CUTOFF",
+                        "severity": "MEDIUM",
+                        "message": (
+                            "Pagos que apuntan a documentos no presentes en el corte de facturas."
+                        ),
+                        "count": metrics["unmatched_payment_count"],
+                        "amount": metrics["unmatched_payment_amount"],
+                    }
+                ]
+                if metrics["unmatched_payment_count"]
+                else []
+            ),
             recommended_actions=[
                 {
                     "action": "review_collection_priorities",
@@ -305,6 +320,7 @@ class CollectionsService:
                     "overdue_balance": ZERO,
                     "max_days_past_due": 0,
                     "overdue_share": ZERO,
+                    "partial_payment_invoice_count": 0,
                     "score_components": {},
                     "priority_score": ZERO,
                     "priority": "LOW",
@@ -339,8 +355,8 @@ class CollectionsService:
             ],
             recommended_actions=[
                 {
-                    "action": "contact_customer",
-                    "reason": "Existe saldo vencido o pago parcial.",
+                    "action": "prioritize_internal_management",
+                    "reason": "Existe saldo vencido o pago parcial para análisis operativo.",
                     "priority": priority_row["priority"],
                 }
             ]
@@ -352,7 +368,7 @@ class CollectionsService:
                     invoices,
                     key=lambda item: item.open_balance_as_of(as_of),
                     reverse=True,
-                )[:20]
+                )
             ],
             visualization_hints=[
                 {"type": "customer_kpis", "source": "metrics"},
@@ -383,6 +399,13 @@ class CollectionsService:
                 invoice.credits_as_of(as_of), key=lambda item: item.issued_at or date.max
             )
         ]
+        invoice_cases = [
+            item
+            for item in self._reconciliation_exception_rows(as_of)
+            if item.get("document") == invoice.document
+        ]
+        evidence["reconciliation_case_ids"] = [item["case_id"] for item in invoice_cases]
+        evidence["reconciliation_case_count"] = len(invoice_cases)
         state = invoice.reconciliation_state(as_of)
         response = AgentResponse(
             operation="invoice_trace",
@@ -407,6 +430,7 @@ class CollectionsService:
                 "state": state,
                 "payment_count": len(invoice.payments),
                 "credit_note_count": len(invoice.credits),
+                "case_ids": [item["case_id"] for item in invoice_cases],
             },
             findings=self._invoice_findings(invoice, as_of),
             recommended_actions=self._invoice_actions(invoice, as_of),
@@ -501,6 +525,10 @@ class CollectionsService:
                     "overdue_balance": overdue,
                     "max_days_past_due": max_dpd,
                     "overdue_share": overdue / outstanding if outstanding else Decimal(),
+                    "partial_payment_invoice_count": sum(
+                        invoice.settlement_state(as_of) == "PAGO_PARCIAL"
+                        for invoice in open_invoices
+                    ),
                 }
             )
         # A portfolio with no overdue balance still scores; the divisor must never be zero.
@@ -519,7 +547,7 @@ class CollectionsService:
                     PRIORITY_WEIGHTS["days_past_due"],
                     PRIORITY_WEIGHTS["days_past_due"]
                     * Decimal(row["max_days_past_due"])
-                    / Decimal(90),
+                    / PRIORITY_DPD_CAP,
                 ),
                 "overdue_share": PRIORITY_WEIGHTS["overdue_share"] * row["overdue_share"],
                 "portfolio_concentration": PRIORITY_WEIGHTS["portfolio_concentration"]
@@ -547,7 +575,13 @@ class CollectionsService:
                 {
                     "type": "SCORING_RULE",
                     "severity": "INFO",
-                    "message": "Score = monto vencido (45) + atraso (30) + porcentaje vencido (15) + concentración (10).",
+                    "message": (
+                        "Score = monto vencido "
+                        f"({PRIORITY_WEIGHTS['overdue_amount']}) + atraso "
+                        f"({PRIORITY_WEIGHTS['days_past_due']}) + porcentaje vencido "
+                        f"({PRIORITY_WEIGHTS['overdue_share']}) + concentración "
+                        f"({PRIORITY_WEIGHTS['portfolio_concentration']})."
+                    ),
                 }
             ],
             recommended_actions=[
@@ -567,7 +601,7 @@ class CollectionsService:
         self, limit: int = 20, as_of_date: str | None = None
     ) -> dict[str, Any]:
         as_of = self._as_of(as_of_date)
-        exceptions: list[dict[str, Any]] = []
+        exceptions = self._reconciliation_exception_rows(as_of)
         payments_analyzed = sum(
             len(invoice.payments_as_of(as_of)) for invoice in self.ledger.invoices.values()
         )
@@ -575,31 +609,118 @@ class CollectionsService:
             invoice.settlement_state(as_of) == "PAGO_PARCIAL"
             for invoice in self.ledger.invoices.values()
         )
+        response = AgentResponse(
+            operation="reconciliation_exceptions",
+            as_of_date=as_of,
+            status={"reconciliation": "REQUIERE_REVISION" if exceptions else "CONCILIADA"},
+            metrics={
+                "payment_applications_analyzed": payments_analyzed,
+                "partial_payment_invoice_count": partial_invoices,
+                "exception_count": len(exceptions),
+                "high_priority_exception_count": sum(
+                    item["severity"] == "HIGH" for item in exceptions
+                ),
+                "returned": min(limit, len(exceptions)),
+            },
+            alerts=[
+                {"type": item["type"], "severity": item["severity"]}
+                for item in exceptions[:limit]
+            ],
+            recommended_actions=[
+                {
+                    "action": "review_exceptions",
+                    "reason": (
+                        "Las excepciones no son automáticamente errores; requieren validar "
+                        "la fuente o el corte."
+                    ),
+                }
+            ],
+            evidence=exceptions[:limit],
+            visualization_hints=[{"type": "exception_table", "source": "evidence"}],
+        )
+        return response.to_dict()
+
+    @staticmethod
+    def _case_id(*parts: object) -> str:
+        identity = "|".join(str(part or "") for part in parts)
+        return f"COL-{sha256(identity.encode()).hexdigest()[:12].upper()}"
+
+    def _reconciliation_exception_rows(self, as_of: date) -> list[dict[str, Any]]:
+        """Build traceable documentary cases once for the API, invoice view and UI."""
+        exceptions: list[dict[str, Any]] = []
         for payment in self.ledger.unmatched_payments:
             if payment.paid_at is None or payment.paid_at > as_of:
                 continue
             exceptions.append(
                 {
+                    "case_id": self._case_id(
+                        "PAYMENT_OUTSIDE_INVOICE_CUTOFF",
+                        payment.document,
+                        payment.customer,
+                        payment.paid_at,
+                        payment.amount,
+                    ),
                     "type": "PAYMENT_OUTSIDE_INVOICE_CUTOFF",
                     "severity": "MEDIUM",
                     "document": payment.document,
                     "customer": payment.customer,
                     "amount": payment.amount,
                     "paid_at": payment.paid_at,
+                    "account_code": payment.account_code,
+                    "invoice_available": False,
+                    "customer_available": any(
+                        invoice.customer == payment.customer
+                        for invoice in self.ledger.invoices.values()
+                    ),
+                    "payment": {
+                        "amount": payment.amount,
+                        "paid_at": payment.paid_at,
+                        "account_code": payment.account_code,
+                    },
+                    "reason": "La factura referenciada no está presente en el corte publicado.",
+                    "evidence": "Relación FACTURA_AFECTADA sin documento fiscal en el ledger.",
+                    "operational_state": "PENDIENTE_VALIDACION",
                     "recommended_action": "Confirmar si la factura pertenece a otro corte o sistema.",
                 }
             )
         for payment in self.ledger.mismatched_payments:
             if payment.paid_at is None or payment.paid_at > as_of:
                 continue
+            invoice = self.ledger.invoices.get(payment.document)
             exceptions.append(
                 {
+                    "case_id": self._case_id(
+                        "PAYMENT_LINK_MISMATCH",
+                        payment.document,
+                        payment.customer,
+                        payment.paid_at,
+                        payment.amount,
+                    ),
                     "type": "PAYMENT_LINK_MISMATCH",
                     "severity": "HIGH",
                     "document": payment.document,
                     "customer": payment.customer,
                     "amount": payment.amount,
                     "paid_at": payment.paid_at,
+                    "account_code": payment.account_code,
+                    "invoice_available": invoice is not None,
+                    "customer_available": any(
+                        item.customer == payment.customer
+                        for item in self.ledger.invoices.values()
+                    ),
+                    "payment": {
+                        "amount": payment.amount,
+                        "paid_at": payment.paid_at,
+                        "account_code": payment.account_code,
+                    },
+                    "expected_customer": invoice.customer if invoice else None,
+                    "expected_account_code": invoice.account_code if invoice else None,
+                    "outstanding_balance": (
+                        invoice.open_balance_as_of(as_of) if invoice else None
+                    ),
+                    "reason": "Cliente o cuenta del pago no coincide con la factura referenciada.",
+                    "evidence": "Comparación documental cliente-cuenta-factura.",
+                    "operational_state": "PENDIENTE_VALIDACION",
                     "recommended_action": (
                         "Validar que cliente, cuenta y factura correspondan antes de aplicar el pago."
                     ),
@@ -610,12 +731,29 @@ class CollectionsService:
                 continue
             exceptions.append(
                 {
+                    "case_id": self._case_id(
+                        "CREDIT_NOTE_OUTSIDE_INVOICE_CUTOFF",
+                        credit.document,
+                        credit.affected_document,
+                        credit.issued_at,
+                        credit.amount,
+                    ),
                     "type": "CREDIT_NOTE_OUTSIDE_INVOICE_CUTOFF",
                     "severity": "MEDIUM",
                     "document": credit.affected_document,
                     "credit_note_document": credit.document,
                     "amount": credit.amount,
                     "issued_at": credit.issued_at,
+                    "credit_note": {
+                        "document": credit.document,
+                        "amount": credit.amount,
+                        "issued_at": credit.issued_at,
+                    },
+                    "invoice_available": False,
+                    "customer_available": False,
+                    "reason": "La factura afectada no está presente en el corte publicado.",
+                    "evidence": "Relación de nota de crédito sin factura en el ledger.",
+                    "operational_state": "PENDIENTE_VALIDACION",
                     "recommended_action": (
                         "Confirmar si la factura afectada pertenece a otro corte o sistema."
                     ),
@@ -626,51 +764,80 @@ class CollectionsService:
             if raw_balance < -TOLERANCE:
                 exceptions.append(
                     {
+                        "case_id": self._case_id(
+                            "OVERAPPLICATION", invoice.document, as_of, -raw_balance
+                        ),
                         "type": "OVERAPPLICATION",
                         "severity": "HIGH",
                         "document": invoice.document,
                         "customer": invoice.customer,
                         "amount": -raw_balance,
+                        "account_code": invoice.account_code,
+                        "invoice_available": True,
+                        "customer_available": True,
+                        "outstanding_balance": invoice.open_balance_as_of(as_of),
+                        "payment": (
+                            {
+                                "amount": invoice.payments_as_of(as_of)[-1].amount,
+                                "paid_at": invoice.payments_as_of(as_of)[-1].paid_at,
+                                "account_code": invoice.account_code,
+                            }
+                            if invoice.payments_as_of(as_of)
+                            else None
+                        ),
+                        "credit_notes": [
+                            {
+                                "document": note.document,
+                                "amount": note.amount,
+                                "issued_at": note.issued_at,
+                            }
+                            for note in invoice.credits_as_of(as_of)
+                        ],
+                        "reason": "Pagos y notas de crédito exceden la obligación neta.",
+                        "evidence": "Saldo documental bruto menor que la tolerancia permitida.",
+                        "operational_state": "PENDIENTE_VALIDACION",
                         "recommended_action": "Validar aplicación de pago y nota de crédito.",
                     }
                 )
-            if invoice.issued_at and any(
-                payment.paid_at and payment.paid_at < invoice.issued_at
+            temporal_payments = [
+                payment
                 for payment in invoice.payments_as_of(as_of)
-            ):
+                if invoice.issued_at and payment.paid_at and payment.paid_at < invoice.issued_at
+            ]
+            for payment in temporal_payments:
                 exceptions.append(
                     {
+                        "case_id": self._case_id(
+                            "PAYMENT_BEFORE_ISSUANCE",
+                            invoice.document,
+                            payment.paid_at,
+                            payment.amount,
+                        ),
                         "type": "PAYMENT_BEFORE_ISSUANCE",
                         "severity": "MEDIUM",
                         "document": invoice.document,
                         "customer": invoice.customer,
+                        "amount": payment.amount,
+                        "paid_at": payment.paid_at,
+                        "account_code": invoice.account_code,
+                        "invoice_available": True,
+                        "customer_available": True,
+                        "outstanding_balance": invoice.open_balance_as_of(as_of),
+                        "payment": {
+                            "amount": payment.amount,
+                            "paid_at": payment.paid_at,
+                            "account_code": payment.account_code,
+                        },
+                        "reason": "La fecha del pago es anterior a la emisión de la factura.",
+                        "evidence": "Comparación determinística FECHA_PAGO < FECHA_EMISION.",
+                        "operational_state": "PENDIENTE_VALIDACION",
                         "recommended_action": "Validar fecha de pago, emisión o carga histórica.",
                     }
                 )
-        severity_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
         exceptions.sort(
-            key=lambda item: (severity_order[item["severity"]], -(item.get("amount") or Decimal()))
+            key=lambda item: (
+                EXCEPTION_SEVERITY_ORDER.get(str(item["severity"]), 99),
+                -(item.get("amount") or Decimal()),
+            )
         )
-        response = AgentResponse(
-            operation="reconciliation_exceptions",
-            as_of_date=as_of,
-            status={"reconciliation": "REQUIERE_REVISION" if exceptions else "CONCILIADA"},
-            metrics={
-                "payment_applications_analyzed": payments_analyzed,
-                "partial_payment_invoice_count": partial_invoices,
-                "exception_count": len(exceptions),
-                "returned": min(limit, len(exceptions)),
-            },
-            alerts=[
-                {"type": item["type"], "severity": item["severity"]} for item in exceptions[:limit]
-            ],
-            recommended_actions=[
-                {
-                    "action": "review_exceptions",
-                    "reason": "Las excepciones no son automáticamente errores; requieren validar la fuente o el corte.",
-                }
-            ],
-            evidence=exceptions[:limit],
-            visualization_hints=[{"type": "exception_table", "source": "evidence"}],
-        )
-        return response.to_dict()
+        return exceptions

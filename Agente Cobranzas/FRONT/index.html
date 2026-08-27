@@ -29,7 +29,7 @@
       <header class="hero">
         <div class="eyebrow">SON-IA · Especialista de Revenue Operations</div>
         <h1>Cobranzas y Recaudación</h1>
-        <p>Identifica dónde concentrar la gestión con cartera, prioridades y evidencia documental.</p>
+        <p>Mesa operativa para identificar, priorizar, investigar y encaminar casos con evidencia.</p>
       </header>
 
       <section class="assistant" aria-labelledby="assistant-title">
@@ -48,7 +48,11 @@
           <span id="ai-badge" class="ai-generated" hidden>✦ Hecho con IA</span>
           <small id="answer-mode"></small>
         </div>
-        <div id="answer" class="answer agent-markdown hidden" aria-live="polite"></div>
+        <div id="answer-shell" class="answer-shell hidden">
+          <div id="answer" class="answer agent-markdown" aria-live="polite"></div>
+          <div id="assistant-actions" class="context-actions"></div>
+          <button id="toggle-answer" class="text-button hidden" type="button" aria-expanded="false">Ver análisis completo</button>
+        </div>
       </section>
 
       <section class="upload" aria-labelledby="upload-title">
@@ -62,19 +66,28 @@
         <a class="secondary supervisor-source-link" href="/">Administrar fuente en Supervisor</a>
       </section>
 
-      <nav class="nav" aria-label="Consultas disponibles">
-        <button class="active" data-view="portfolio" type="button">Cartera</button>
-        <button data-view="customer" type="button">Cliente</button>
-        <button data-view="invoice" type="button">Factura</button>
-        <button data-view="priorities" type="button">Prioridades</button>
-        <button data-view="exceptions" type="button">Conciliación documental</button>
-      </nav>
+      <section class="process-switcher" aria-label="Procesos de Cobranzas y Recaudación">
+        <button class="process-card active" data-process="collection" type="button">
+          <strong>Cobranza</strong>
+          <span>¿Qué falta recuperar y qué debemos gestionar primero?</span>
+        </button>
+        <button class="process-card" data-process="revenue" type="button">
+          <strong>Recaudación</strong>
+          <span>¿Qué pagos llegaron, cómo se aplicaron y cuáles requieren revisión?</span>
+        </button>
+      </section>
+
+      <nav class="nav" aria-label="Vistas operativas"></nav>
 
       <section class="panel" aria-live="polite">
+        <div id="workspace-heading" class="workspace-heading"></div>
+        <div id="breadcrumbs" class="breadcrumbs" aria-label="Ruta de navegación"></div>
         <div id="controls"></div>
         <div id="feedback" class="notice">Preparando el agente…</div>
         <div id="content"></div>
       </section>
+      <div id="drawer-backdrop" class="drawer-backdrop hidden"></div>
+      <aside id="case-drawer" class="case-drawer" aria-labelledby="drawer-title" aria-hidden="true"></aside>
     </main>
       </div>
     </div>

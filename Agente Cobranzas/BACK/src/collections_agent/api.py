@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .agent import tool_definitions
 from .application import CollectionsBackend
 from .config import CollectionsSettings, get_settings
+from .rules import MAX_OPERATIONAL_ROWS
 from .service import CollectionsService
 
 UPLOAD_CHUNK_BYTES = 1024 * 1024
@@ -81,14 +82,18 @@ def create_collections_router(
     @router.get("/priorities")
     def priorities(limit: int = 10, as_of_date: str | None = None) -> dict[str, Any]:
         try:
-            return service().collection_priorities(max(1, min(limit, 50)), as_of_date)
+            return service().collection_priorities(
+                max(1, min(limit, MAX_OPERATIONAL_ROWS)), as_of_date
+            )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
     @router.get("/exceptions")
     def exceptions(limit: int = 10, as_of_date: str | None = None) -> dict[str, Any]:
         try:
-            return service().reconciliation_exceptions(max(1, min(limit, 50)), as_of_date)
+            return service().reconciliation_exceptions(
+                max(1, min(limit, MAX_OPERATIONAL_ROWS)), as_of_date
+            )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
