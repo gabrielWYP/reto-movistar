@@ -16,6 +16,7 @@ from .datasets import DatasetRegistry
 from .openai_runtime import OpenAIRuntime
 from .presentation import presentation_for
 from .runtime import BillingAgentRuntime, SessionContext
+from .work_queue import build_work_queue
 
 LOG = logging.getLogger("sonia.billing")
 
@@ -99,6 +100,14 @@ def create_app(
     async def billing_health(dataset_id: str | None = None, as_of_date: str | None = None) -> dict[str, Any]:
         record = registry.resolve(dataset_id)
         return response(record, record.service.billing_health_snapshot(as_of_date))
+
+    @application.get(api_path("/work-queue"), tags=["billing"])
+    async def work_queue(
+        dataset_id: str | None = None,
+        as_of_date: str | None = None,
+    ) -> dict[str, Any]:
+        record = registry.resolve(dataset_id)
+        return {"dataset_id": record.dataset_id, **build_work_queue(record.service, as_of_date)}
 
     @application.get(api_path("/customer"), tags=["billing"])
     async def customer(customer_id: str, account_id: str | None = None, dataset_id: str | None = None, as_of_date: str | None = None) -> dict[str, Any]:
