@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from billing_agent.data import load_dataset_bytes
 from billing_agent.service import BillingService
+from fastapi.testclient import TestClient
+
 from sonia.config import Settings
 from sonia.entrypoints.api import create_app
 
@@ -69,9 +69,7 @@ def test_shared_backend_exposes_billing_work_queue() -> None:
     """The additive queue is reachable through Billing's integrated namespace."""
     application = create_app(_settings())
     billing_mount = next(
-        route
-        for route in application.routes
-        if getattr(route, "name", None) == "billing-agent"
+        route for route in application.routes if getattr(route, "name", None) == "billing-agent"
     )
     service = BillingService.from_dataset(
         load_dataset_bytes(
