@@ -421,6 +421,194 @@ class BICoreTests(unittest.TestCase):
         self.assertTrue(upstream["priority_evidence_available"])
         self.assertNotIn("priority_score", response["metrics"])
 
+    def test_management_uses_exact_read_only_collections_kpis_without_recalculation(self):
+        collections_response = {
+            "contract_version": "1.1",
+            "agent": "collections",
+            "operation": "portfolio_snapshot",
+            "as_of_date": "2026-07-31",
+            "status": {"currency": "PEN", "currency_scope": "single_declared_currency"},
+            "metrics": {
+                "collection_ratio_30_days": 0.314159,
+                "average_collection_period_days": 17.25,
+                "overdue_balance": 9876.54,
+                "partial_payment_invoice_count": 7,
+                "collection_ratio": 0.999,
+            },
+        }
+        response = BIService(self.dataset, collections_response).management_insights("2026-07-31")
+
+        expected = {
+            key: collections_response["metrics"][key]
+            for key in (
+                "collection_ratio_30_days",
+                "average_collection_period_days",
+                "overdue_balance",
+                "partial_payment_invoice_count",
+            )
+        }
+        self.assertEqual(response["metrics"]["collections_kpis"], expected)
+        self.assertEqual(response["metrics"]["collection_ratio_30_days"], 0.314159)
+        self.assertEqual(response["metrics"]["average_collection_period_days"], 17.25)
+        self.assertEqual(response["metrics"]["collections_overdue_balance"], 9876.54)
+        self.assertEqual(response["metrics"]["partial_payment_invoice_count"], 7)
+        self.assertEqual(response["metrics"]["overdue_balance"], 40.0)
+        evidence = next(
+            item for item in response["evidence"] if item["id"] == "management_collections_kpis"
+        )
+        self.assertEqual(evidence["value"], expected)
+        self.assertEqual(evidence["contract_version"], "1.1")
+        self.assertEqual(evidence["operation"], "portfolio_snapshot")
+        self.assertEqual(evidence["as_of_date"], "2026-07-31")
+        self.assertEqual(evidence["currency"], "PEN")
+        upstream = next(
+            item
+            for item in response["upstream_inputs"]
+            if item["type"] == "collections_agent_response"
+        )
+        self.assertEqual(upstream["calculation_owner"], "collections")
+        self.assertEqual(upstream["status"], "evidence_available")
+
+        view = presentation_for(response, dashboard_spec(response))
+        cards = {item["key"]: item for item in view["kpis"]}
+        self.assertEqual(cards["collection_ratio_30_days"]["value"], 0.314159)
+        self.assertEqual(cards["average_collection_period_days"]["value"], 17.25)
+
+    def test_management_ignores_collections_kpis_from_another_cutoff(self):
+        collections_response = {
+            "contract_version": "1.1",
+            "agent": "collections",
+            "operation": "portfolio_snapshot",
+            "as_of_date": "2026-07-30",
+            "status": {"currency": "PEN", "currency_scope": "single_declared_currency"},
+            "metrics": {
+                "collection_ratio_30_days": 0.8,
+                "average_collection_period_days": 2.0,
+                "overdue_balance": 1.0,
+                "partial_payment_invoice_count": 1,
+            },
+        }
+        response = BIService(self.dataset, collections_response).management_insights("2026-07-31")
+        self.assertNotIn("collections_kpis", response["metrics"])
+        alert = next(
+            item for item in response["alerts"] if item["type"] == "COLLECTIONS_KPIS_UNAVAILABLE"
+        )
+        self.assertEqual(alert["reason"], "collections_as_of_date_mismatch")
+        evidence = next(
+            item for item in response["evidence"] if item["id"] == "management_collections_kpis"
+        )
+        self.assertEqual(evidence["as_of_date"], "2026-07-30")
+        self.assertEqual(evidence["value"], {})
+
+    def test_management_declares_unspecified_currency_records_without_changing_values(self):
+        collections_response = {
+            "contract_version": "1.1",
+            "agent": "collections",
+            "operation": "portfolio_snapshot",
+            "as_of_date": "2026-07-31",
+            "status": {
+                "currency": "PEN",
+                "currency_scope": "single_declared_currency_with_unspecified_records",
+            },
+            "metrics": {
+                "collection_ratio_30_days": 0.271828,
+                "average_collection_period_days": 19.75,
+                "overdue_balance": 456.78,
+                "partial_payment_invoice_count": 3,
+            },
+        }
+        response = BIService(self.dataset, collections_response).management_insights("2026-07-31")
+
+        self.assertEqual(response["metrics"]["collection_ratio_30_days"], 0.271828)
+        self.assertEqual(response["metrics"]["average_collection_period_days"], 19.75)
+        alert = next(
+            item
+            for item in response["alerts"]
+            if item["type"] == "COLLECTIONS_CURRENCY_SCOPE_LIMITATION"
+        )
+        self.assertEqual(alert["evidence_refs"], ["management_collections_kpis"])
+        evidence = next(
+            item for item in response["evidence"] if item["id"] == "management_collections_kpis"
+        )
+        self.assertEqual(
+            evidence["currency_scope"],
+            "single_declared_currency_with_unspecified_records",
+        )
+        view = presentation_for(response, dashboard_spec(response))
+        visible_alert = next(
+            item
+            for item in view["alerts"]
+            if item["technical_type"] == "COLLECTIONS_CURRENCY_SCOPE_LIMITATION"
+        )
+        self.assertEqual(visible_alert["title"], "Alcance monetario parcialmente informado")
+
+    def test_invalid_missing_or_wrong_currency_collections_response_does_not_break_bi(self):
+        responses = (
+            None,
+            {"agent": "billing", "operation": "portfolio_snapshot"},
+            {
+                "contract_version": "1.1",
+                "agent": "collections",
+                "operation": "portfolio_snapshot",
+                "as_of_date": "2026-07-31",
+                "status": {"currency": "USD"},
+                "metrics": {
+                    "collection_ratio_30_days": 0.5,
+                    "average_collection_period_days": 10.0,
+                    "overdue_balance": 100.0,
+                    "partial_payment_invoice_count": 2,
+                },
+            },
+        )
+        for collections_response in responses:
+            service = BIService(self.dataset, collections_response)
+            response = service.management_insights("2026-07-31")
+            self.assertEqual(response["metrics"]["overdue_balance"], 40.0)
+            self.assertNotIn("collections_kpis", response["metrics"])
+            self.assertTrue(
+                any(item["type"] == "COLLECTIONS_KPIS_UNAVAILABLE" for item in response["alerts"])
+            )
+
+        def unavailable_provider(as_of_date: str) -> object:
+            raise RuntimeError(f"Collections unavailable at {as_of_date}")
+
+        provider_service = BIService(
+            self.dataset,
+            collections_response_provider=unavailable_provider,
+        )
+        provider_response = provider_service.management_insights("2026-07-31")
+        self.assertEqual(provider_response["metrics"]["overdue_balance"], 40.0)
+        provider_alert = next(
+            item
+            for item in provider_response["alerts"]
+            if item["type"] == "COLLECTIONS_KPIS_UNAVAILABLE"
+        )
+        self.assertEqual(provider_alert["reason"], "collections_provider_unavailable")
+
+    def test_natural_query_routes_collections_kpis_to_management_insights(self):
+        collections_response = {
+            "contract_version": "1.1",
+            "agent": "collections",
+            "operation": "portfolio_snapshot",
+            "as_of_date": "2026-07-31",
+            "status": {"currency": "PEN", "currency_scope": "single_declared_currency"},
+            "metrics": {
+                "collection_ratio_30_days": 0.403,
+                "average_collection_period_days": 14.0,
+                "overdue_balance": 60.0,
+                "partial_payment_invoice_count": 1,
+            },
+        }
+        result = ask(
+            BIService(self.dataset, collections_response),
+            "¿Cuál es el PMC y el ratio 30 días?",
+            "2026-07-31",
+        )
+        self.assertEqual(result["tool_used"], "management_insights")
+        self.assertEqual(result["agent_response"]["metrics"]["collection_ratio_30_days"], 0.403)
+        self.assertIn("40.3%", result["answer"])
+        self.assertIn("14 días", result["answer"])
+
     def test_agent_runtime_exposes_only_five_closed_tools(self):
         schemas = tool_schemas()
         self.assertEqual({schema["name"] for schema in schemas}, TOOL_NAMES)

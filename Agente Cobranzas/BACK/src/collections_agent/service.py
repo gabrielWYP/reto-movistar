@@ -135,6 +135,28 @@ class CollectionsService:
         }
 
     @staticmethod
+    def _currency_status(invoices: list[InvoiceLedger]) -> dict[str, str]:
+        """Describe the existing KPI universe without changing its calculations."""
+        declared = sorted(
+            {
+                invoice.currency.strip().upper()
+                for invoice in invoices
+                if isinstance(invoice.currency, str) and invoice.currency.strip()
+            }
+        )
+        unspecified = sum(not (invoice.currency or "").strip() for invoice in invoices)
+        if len(declared) == 1:
+            scope = (
+                "single_declared_currency_with_unspecified_records"
+                if unspecified
+                else "single_declared_currency"
+            )
+            return {"currency": declared[0], "currency_scope": scope}
+        if len(declared) > 1:
+            return {"currency": "MIXED", "currency_scope": "multiple_declared_currencies"}
+        return {"currency": "UNKNOWN", "currency_scope": "no_declared_currency"}
+
+    @staticmethod
     def _kpis(invoices: list[InvoiceLedger], as_of: date) -> dict[str, Any]:
         """Calculate challenge KPIs from valid, linked applications only."""
         eligible_cutoff = as_of - timedelta(days=30)
@@ -219,6 +241,10 @@ class CollectionsService:
         invoices = list(self.ledger.invoices.values())
         metrics = self._metrics(invoices, as_of)
         kpis = self._kpis(invoices, as_of)
+        currency_status = self._currency_status(invoices)
+        unspecified_currency_count = sum(
+            not (invoice.currency or "").strip() for invoice in invoices
+        )
         metrics["collection_ratio_30_days"] = kpis["collection_ratio_30_days"]["value"]
         metrics["average_collection_period_days"] = kpis["average_collection_period"]["value"]
         metrics["unmatched_payment_amount"] = sum(
@@ -236,6 +262,7 @@ class CollectionsService:
         response = AgentResponse(
             operation="portfolio_snapshot",
             as_of_date=as_of,
+            status=currency_status,
             metrics=metrics,
             kpis=kpis,
             aging=self._aging(invoices, as_of),
@@ -270,11 +297,19 @@ class CollectionsService:
                     "unmatched_payment_count": metrics["unmatched_payment_count"],
                     "mismatched_payment_count": len(self.ledger.mismatched_payments),
                     "unmatched_credit_note_count": len(self.ledger.unmatched_credit_notes),
+                    "unspecified_invoice_currency_count": unspecified_currency_count,
                 },
                 "known_limitations": [
                     "El dataset no contiene extractos bancarios ni comunicaciones.",
                     "El RUC está anonimizado de forma inconsistente; los joins de cliente usan RAZON_SOCIAL.",
                     "Los KPIs de plazo excluyen pagos anteriores a la emisión.",
+                    *(
+                        [
+                            "Existen facturas sin moneda declarada; la moneda informada refleja las monedas explícitas observadas y esta limitación acompaña los KPIs."
+                        ]
+                        if unspecified_currency_count
+                        else []
+                    ),
                 ],
             },
             visualization_hints=[

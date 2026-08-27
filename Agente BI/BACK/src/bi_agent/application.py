@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from threading import Lock
 from typing import Any
 
@@ -22,13 +23,17 @@ class BIBackend:
         *,
         service: BIService | None = None,
         runtime: OpenCodeRuntime | None = None,
+        collections_response_provider: Callable[[str], object] | None = None,
     ) -> None:
         self._service = service
         self._dataset_files: dict[str, bytes] = {}
         self._dataset_bytes = 0
         self._dataset_source = "injected" if service is not None else None
         self._runtime = runtime or OpenCodeRuntime()
+        self._collections_response_provider = collections_response_provider
         self._service_lock = Lock()
+        if self._service is not None and collections_response_provider is not None:
+            self._service.set_collections_response_provider(collections_response_provider)
 
     @property
     def configured(self) -> bool:
@@ -43,6 +48,16 @@ class BIBackend:
     def llm_metadata(self) -> dict[str, str]:
         """Expose provider and model without leaking authentication state."""
         return self._runtime.metadata()
+
+    def set_collections_response_provider(
+        self,
+        provider: Callable[[str], object] | None,
+    ) -> None:
+        """Bind a read-only JSON provider used by management insights."""
+        with self._service_lock:
+            self._collections_response_provider = provider
+            if self._service is not None:
+                self._service.set_collections_response_provider(provider)
 
     def dataset_status(self) -> dict[str, Any]:
         """Return non-sensitive metadata for the process-local dataset."""
@@ -77,7 +92,10 @@ class BIBackend:
                 self._dataset_source = "memory"
                 return self.dataset_status()
 
-            service = BIService(candidate)
+            service = BIService(
+                candidate,
+                collections_response_provider=self._collections_response_provider,
+            )
             self._dataset_files = candidate
             self._dataset_bytes = total_bytes
             self._dataset_source = "memory"
@@ -93,6 +111,7 @@ class BIBackend:
     ) -> dict[str, Any]:
         """Publish a dataset already validated by the shared Supervisor."""
         with self._service_lock:
+            service.set_collections_response_provider(self._collections_response_provider)
             self._service = service
             self._dataset_files = dict(files)
             self._dataset_bytes = sum(len(content) for content in files.values())

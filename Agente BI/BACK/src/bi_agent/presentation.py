@@ -37,6 +37,26 @@ METRIC_LABELS: dict[str, tuple[str, str, str]] = {
         "Proporción facturada cubierta por pagos vinculados; no equivale necesariamente al recaudo total.",
         "percent",
     ),
+    "collection_ratio_30_days": (
+        "Ratio de cobro a 30 días",
+        "Valor calculado por Cobranzas para pagos aplicados dentro de 30 días; BI no lo recalcula.",
+        "percent",
+    ),
+    "average_collection_period_days": (
+        "Período medio de cobranza",
+        "Promedio ponderado de días reportado por Cobranzas para el mismo corte.",
+        "days",
+    ),
+    "collections_overdue_balance": (
+        "Saldo vencido según Cobranzas",
+        "Saldo vencido recibido como evidencia read-only del Agente de Cobranzas.",
+        "money",
+    ),
+    "partial_payment_invoice_count": (
+        "Facturas con pago parcial",
+        "Cantidad de facturas que Cobranzas clasifica con pago parcial al corte.",
+        "count",
+    ),
     "metric_total": (
         "Saldo vencido total",
         "Saldo vencido analizado en la dimensión seleccionada.",
@@ -147,10 +167,12 @@ _MONEY_FIELDS = {
     "exposure_total",
     "addressable_exposure",
     "preventive_open_balance",
+    "collections_overdue_balance",
     "amount",
 }
 _PERCENT_FIELDS = {
     "collection_ratio",
+    "collection_ratio_30_days",
     "top_n_customer_coverage",
     "overdue_share_of_open_balance",
     "share",
@@ -158,6 +180,7 @@ _PERCENT_FIELDS = {
     "coverage",
     "share_of_outstanding",
 }
+_DAY_FIELDS = {"average_collection_period_days"}
 
 
 def format_date(as_of_date: str) -> str:
@@ -176,6 +199,8 @@ def display_value(value: Any, field: str | None = None) -> str:
         return f"S/ {value:,.2f}"
     if field in _PERCENT_FIELDS and isinstance(value, (int, float)):
         return f"{value * 100:.0f}%"
+    if field in _DAY_FIELDS and isinstance(value, (int, float)):
+        return f"{value:,.1f} días"
     if isinstance(value, float):
         return f"{value:,.2f}"
     return str(value)
@@ -266,6 +291,15 @@ def _finding_copy(item: dict[str, Any], response: dict[str, Any]) -> dict[str, A
         title = "Alcance y reglas de calidad documentados"
         detail = "Las fuentes, reglas de unión, moneda y exclusiones por fecha de corte están explícitas."
         impact = "Esto permite interpretar los resultados considerando las limitaciones de la muestra del hackathon."
+    elif item_type == "MANAGEMENT_COLLECTIONS_KPIS":
+        ratio = display_value(item.get("collection_ratio_30_days"), "collection_ratio_30_days")
+        days = display_value(
+            item.get("average_collection_period_days"),
+            "average_collection_period_days",
+        )
+        title = "Indicadores operativos aportados por Cobranzas"
+        detail = f"Cobranzas reporta un ratio de cobro a 30 días de {ratio} y un período medio de cobranza de {days}."
+        impact = "BI utiliza estos valores como evidencia read-only para dar contexto gerencial; no recalcula ratios ni atribuye causas."
 
     return {
         "title": title,
@@ -354,6 +388,24 @@ def _alert_copy(item: dict[str, Any]) -> dict[str, Any]:
             "evidence_refs": list(item.get("evidence_refs", [])),
             "technical_type": alert_type,
         }
+    if alert_type == "COLLECTIONS_KPIS_UNAVAILABLE":
+        return {
+            "title": "KPIs de Cobranzas no disponibles",
+            "detail": "No se utilizaron indicadores de Cobranzas porque la respuesta no estaba disponible o no coincidía en contrato, corte o alcance PEN.",
+            "impact": "BI continúa con sus capacidades actuales y mantiene explícita esta limitación de integración.",
+            "severity": item.get("severity", "INFO"),
+            "evidence_refs": list(item.get("evidence_refs", [])),
+            "technical_type": alert_type,
+        }
+    if alert_type == "COLLECTIONS_CURRENCY_SCOPE_LIMITATION":
+        return {
+            "title": "Alcance monetario parcialmente informado",
+            "detail": "Cobranzas reporta PEN como única moneda declarada, pero existen registros cuya moneda no está informada.",
+            "impact": "Los KPIs se muestran con esta limitación explícita y no deben combinarse con universos monetarios distintos.",
+            "severity": item.get("severity", "INFO"),
+            "evidence_refs": list(item.get("evidence_refs", [])),
+            "technical_type": alert_type,
+        }
     return {
         "title": "Limitación de calidad de información",
         "detail": "La evidencia disponible debe revisarse antes de tomar una decisión operativa.",
@@ -399,12 +451,22 @@ def _kpis(response: dict[str, Any]) -> list[dict[str, Any]]:
         ]
         return [_card(key, metrics[key]) for key in keys if key in metrics]
     if operation == "management_insights":
-        keys = [
-            "outstanding_balance",
-            "overdue_balance",
-            "overdue_share_of_open_balance",
-            "top_n_customer_coverage",
-        ]
+        keys = (
+            [
+                "overdue_balance",
+                "collection_ratio_30_days",
+                "average_collection_period_days",
+                "partial_payment_invoice_count",
+                "top_n_customer_coverage",
+            ]
+            if "collections_kpis" in metrics
+            else [
+                "outstanding_balance",
+                "overdue_balance",
+                "overdue_share_of_open_balance",
+                "top_n_customer_coverage",
+            ]
+        )
         return [_card(key, metrics[key]) for key in keys if key in metrics]
     if operation == "data_quality_report":
         keys = [
