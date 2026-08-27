@@ -17,7 +17,7 @@ DATASET = Path(DATASET_VALUE) if DATASET_VALUE else None
 def _invoice_csv(*rows: bytes) -> bytes:
     return (
         b"RAZON_SOCIAL|COD_CLIENTE|COD_CUENTA|NRO_DOC_FISCAL|"
-        b"FECHA_EMISION|FECHA_VTO|CHARGE_TOTAL_AMOUNT\n" + b"".join(rows)
+        b"FECHA_EMISION|FECHA_VTO|MONEDA|CHARGE_TOTAL_AMOUNT\n" + b"".join(rows)
     )
 
 
@@ -32,7 +32,9 @@ class CollectionsContractTests(unittest.TestCase):
             [
                 (
                     "facturas.csv",
-                    _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.50\n"),
+                    _invoice_csv(
+                        b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|PEN|100.50\n"
+                    ),
                 ),
                 (
                     "pagos.csv",
@@ -97,13 +99,17 @@ class CollectionsContractTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["collection_ratio_30_days"], 0.403)
         self.assertEqual(result["metrics"]["average_collection_period_days"], 14.0)
         self.assertEqual(result["kpis"]["collection_ratio_30_days"]["eligible_invoice_count"], 1)
+        self.assertEqual(result["status"]["currency"], "PEN")
+        self.assertEqual(result["status"]["currency_scope"], "single_declared_currency")
 
     def test_historical_cutoff_excludes_future_payments(self):
         dataset, report = load_uploaded_csvs(
             [
                 (
                     "facturas.csv",
-                    _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.00\n"),
+                    _invoice_csv(
+                        b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|PEN|100.00\n"
+                    ),
                 ),
                 (
                     "pagos.csv",
@@ -254,7 +260,9 @@ class CollectionsContractTests(unittest.TestCase):
             [
                 (
                     "facturas.csv",
-                    _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.00\n"),
+                    _invoice_csv(
+                        b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|PEN|100.00\n"
+                    ),
                 ),
                 (
                     "pagos.csv",
@@ -273,7 +281,9 @@ class CollectionsContractTests(unittest.TestCase):
             [
                 (
                     "facturas.csv",
-                    _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.00\n"),
+                    _invoice_csv(
+                        b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|PEN|100.00\n"
+                    ),
                 ),
                 (
                     "pagos.csv",
@@ -304,7 +314,7 @@ class CollectionsContractTests(unittest.TestCase):
             ),
             (
                 "005_TBL_FACTURAS_B2B.csv",
-                _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|100.50\n"),
+                _invoice_csv(b"CLIENT_TEST|001|ACC-1|FAC-001|2026-07-01|2026-07-20|PEN|100.50\n"),
             ),
             (
                 "006_TBL_NOTAS_CREDITO_B2B.csv",

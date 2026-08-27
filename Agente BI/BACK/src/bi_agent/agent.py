@@ -86,7 +86,7 @@ def tool_schemas() -> list[dict[str, Any]]:
         {
             "type": "function",
             "name": "management_insights",
-            "description": "Síntesis ejecutiva de riesgos, oportunidades y acciones.",
+            "description": "Síntesis ejecutiva de riesgos, oportunidades, acciones y KPIs read-only de Cobranzas cuando estén disponibles.",
             "parameters": {
                 "type": "object",
                 "properties": {"as_of_date": date_property, "dimension": dimension, "top_n": top_n},
@@ -147,6 +147,13 @@ def deterministic_route(question: str, as_of_date: str) -> tuple[str, dict[str, 
             "qué debería",
             "que deberia",
             "riesgo más",
+            "ratio 30",
+            "30 días",
+            "30 dias",
+            "periodo medio",
+            "período medio",
+            "pmc",
+            "pago parcial",
         )
     ):
         return "management_insights", {
@@ -265,6 +272,14 @@ def deterministic_narrative(payload: dict[str, Any]) -> str:
         answer = f"La oportunidad de recupero documentada alcanza {_money(metrics.get('addressable_exposure'))}, equivalente a {float(metrics.get('top_n_customer_coverage', 0)):.0%} del saldo vencido en los principales casos."
     elif operation == "management_insights":
         answer = f"La gerencia debería focalizar el saldo vencido documentado de {_money(metrics.get('overdue_balance'))}; los hallazgos están ordenados por impacto y respaldados por evidencia."
+        collections_kpis = metrics.get("collections_kpis")
+        if isinstance(collections_kpis, dict):
+            ratio = collections_kpis.get("collection_ratio_30_days")
+            average_days = collections_kpis.get("average_collection_period_days")
+            if isinstance(ratio, int | float) and not isinstance(ratio, bool):
+                answer += f" Cobranzas reporta un ratio de cobro a 30 días de {ratio:.1%}."
+            if isinstance(average_days, int | float) and not isinstance(average_days, bool):
+                answer += f" El período medio de cobranza reportado es {average_days:g} días."
     else:
         exclusions = payload.get("data_quality", {}).get("as_of_exclusions", {})
         answer = f"La evaluación de calidad identifica {exclusions.get('unmatched_payment_count', 0)} pagos sin factura disponible en el conjunto analizado."

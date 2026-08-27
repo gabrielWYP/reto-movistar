@@ -93,8 +93,15 @@ def create_app(
         openapi_url="/api/openapi.json",
     )
     runtime_bi_backend = bi_backend or BIBackend()
-    application.include_router(create_bi_router(runtime_bi_backend, allow_manual_upload=False))
     runtime_collections_backend = collections_backend or CollectionsBackend()
+    runtime_bi_backend.set_collections_response_provider(
+        lambda as_of_date: runtime_collections_backend.execute_tool(
+            "portfolio_snapshot",
+            {},
+            as_of_date,
+        )
+    )
+    application.include_router(create_bi_router(runtime_bi_backend, allow_manual_upload=False))
     application.include_router(
         create_collections_router(
             runtime_collections_backend,

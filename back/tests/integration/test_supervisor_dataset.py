@@ -69,6 +69,10 @@ def test_supervisor_atomically_publishes_one_dataset_to_all_agents() -> None:
             "/api/bi/tools/executive_snapshot",
             json={"as_of_date": "2026-08-31", "parameters": {}},
         )
+        bi_management = client.post(
+            "/api/bi/tools/management_insights",
+            json={"as_of_date": "2026-08-31", "parameters": {}},
+        )
 
     assert published.status_code == 200
     assert supervisor.json()["dataset_source"] == "supervisor"
@@ -81,6 +85,19 @@ def test_supervisor_atomically_publishes_one_dataset_to_all_agents() -> None:
     assert billing_view.status_code == 200
     assert collections_view.status_code == 200
     assert bi_view.status_code == 200
+    assert bi_management.status_code == 200
+    collections_metrics = collections_view.json()["metrics"]
+    consumed = bi_management.json()["agent_response"]["metrics"]["collections_kpis"]
+    assert consumed == {
+        key: collections_metrics[key]
+        for key in (
+            "collection_ratio_30_days",
+            "average_collection_period_days",
+            "overdue_balance",
+            "partial_payment_invoice_count",
+        )
+    }
+    assert bi_management.json()["agent_response"]["as_of_date"] == "2026-08-31"
 
 
 def test_agent_upload_routes_cannot_bypass_supervisor() -> None:

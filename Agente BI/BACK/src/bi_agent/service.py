@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -11,7 +11,11 @@ from typing import Any
 
 from .contracts import AgentResponse
 from .data import load_dataset
-from .integration import collections_response_metadata
+from .integration import (
+    collections_kpi_context,
+    collections_response_metadata,
+    unavailable_collections_kpi_context,
+)
 from .model import (
     PEN,
     TOLERANCE,
@@ -42,11 +46,31 @@ class BIService:
         self,
         dataset_source: Path | Mapping[str, bytes],
         collections_response: dict[str, Any] | None = None,
+        collections_response_provider: Callable[[str], object] | None = None,
     ) -> None:
         self.model: CanonicalRevenueModel = build_canonical_model(load_dataset(dataset_source))
-        self.collections_upstream = (
-            collections_response_metadata(collections_response) if collections_response else None
-        )
+        self._collections_response = collections_response
+        self._collections_response_provider = collections_response_provider
+        self.collections_upstream: dict[str, Any] | None = None
+        if collections_response:
+            try:
+                self.collections_upstream = collections_response_metadata(collections_response)
+            except ValueError:
+                self.collections_upstream = {
+                    "type": "collections_agent_response",
+                    "agent": "collections",
+                    "status": "unavailable",
+                    "access": "read_only_json",
+                    "calculation_owner": "collections",
+                    "reason": "invalid_collections_contract",
+                }
+
+    def set_collections_response_provider(
+        self,
+        provider: Callable[[str], object] | None,
+    ) -> None:
+        """Bind a JSON-only upstream provider without importing Collections internals."""
+        self._collections_response_provider = provider
 
     @staticmethod
     def _as_of(value: str | None) -> date:
@@ -59,11 +83,29 @@ class BIService:
             raise ValueError(f"scope debe ser uno de: {', '.join(sorted(ALLOWED_SCOPES))}")
         return scope
 
-    def _upstream_inputs(self) -> list[dict[str, Any]]:
+    def _upstream_inputs(
+        self,
+        collections_input: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         values = [{"type": "csv_adapter", "status": "active"}]
-        if self.collections_upstream:
+        if collections_input:
+            values.append(collections_input)
+        elif self.collections_upstream:
             values.append(self.collections_upstream)
         return values
+
+    def _collections_context(self, as_of: date) -> dict[str, Any]:
+        expected = as_of.isoformat()
+        payload: object = self._collections_response
+        if self._collections_response_provider is not None:
+            try:
+                payload = self._collections_response_provider(expected)
+            except (KeyError, RuntimeError, TypeError, ValueError):
+                return unavailable_collections_kpi_context(
+                    expected,
+                    "collections_provider_unavailable",
+                )
+        return collections_kpi_context(payload, expected, PEN)
 
     def _dimensions(self, item: SnapshotInvoice) -> dict[str, str]:
         invoice = item.invoice
@@ -708,6 +750,8 @@ class BIService:
             dimension, "overdue_balance", top_n, as_of.isoformat()
         )
         quality = self._quality(as_of)
+        collections_context = self._collections_context(as_of)
+        collections_metrics = collections_context["metrics"]
         executive_metrics = executive["metrics"]
         recovery_metrics = recovery["metrics"]
         group_rows = concentration["evidence"][0]["value"]
@@ -742,6 +786,19 @@ class BIService:
                 "id": "management_data_quality",
                 "type": "data_quality_scope",
                 "value": quality["as_of_exclusions"],
+            },
+            {
+                "id": "management_collections_kpis",
+                "type": "collections_kpis_read_only",
+                "source_agent": "collections",
+                "contract_version": collections_context["upstream_input"].get("contract_version"),
+                "operation": collections_context["upstream_input"].get("operation"),
+                "as_of_date": collections_context["upstream_input"].get("as_of_date"),
+                "currency": collections_context["upstream_input"].get("currency"),
+                "currency_scope": collections_context["upstream_input"].get("currency_scope"),
+                "status": collections_context["upstream_input"]["status"],
+                "reason": collections_context["reason"],
+                "value": collections_metrics,
             },
         ]
         findings: list[dict[str, Any]] = []
@@ -855,22 +912,73 @@ class BIService:
                     "evidence_refs": ["management_document_adjustments"],
                 }
             )
+        if collections_context["available"]:
+            findings.append(
+                {
+                    "type": "MANAGEMENT_COLLECTIONS_KPIS",
+                    "severity": "INFO",
+                    "finding": "Cobranzas aporta indicadores operativos aprobados para el mismo corte.",
+                    "impact": "Estos valores agregan contexto de eficiencia y cartera sin duplicar fórmulas financieras dentro de BI.",
+                    "message": "BI conserva los valores recibidos de Cobranzas como evidencia read-only; no infiere causalidad ni realiza forecast.",
+                    **collections_metrics,
+                    "evidence_refs": ["management_collections_kpis"],
+                }
+            )
         findings.sort(key=lambda item: (SEVERITY_ORDER[item["severity"]], item["type"]))
         alerts = self._quality_alerts(quality, "management_data_quality")
+        if not collections_context["available"]:
+            alerts.append(
+                {
+                    "type": "COLLECTIONS_KPIS_UNAVAILABLE",
+                    "severity": "INFO",
+                    "message": "Los KPIs read-only de Cobranzas no están disponibles para este corte y alcance monetario.",
+                    "reason": collections_context["reason"],
+                    "evidence_refs": ["management_collections_kpis"],
+                }
+            )
+        elif collections_context["upstream_input"].get("currency_scope") == (
+            "single_declared_currency_with_unspecified_records"
+        ):
+            alerts.append(
+                {
+                    "type": "COLLECTIONS_CURRENCY_SCOPE_LIMITATION",
+                    "severity": "INFO",
+                    "message": "Cobranzas reporta PEN como única moneda declarada, con registros cuya moneda no está informada.",
+                    "evidence_refs": ["management_collections_kpis"],
+                }
+            )
+        management_metrics: dict[str, Any] = {
+            "currency": PEN,
+            "outstanding_balance": executive_metrics["outstanding_balance"],
+            "overdue_balance": executive_metrics["overdue_balance"],
+            "overdue_share_of_open_balance": overdue_share,
+            "top_n_customer_coverage": recovery_metrics["top_n_customer_coverage"],
+            "business_finding_count": len(findings),
+            "data_quality_alert_count": len(alerts),
+        }
+        if collections_context["available"]:
+            management_metrics["collections_kpis"] = collections_metrics
+            for field in (
+                "collection_ratio_30_days",
+                "average_collection_period_days",
+                "partial_payment_invoice_count",
+            ):
+                if field in collections_metrics:
+                    management_metrics[field] = collections_metrics[field]
+            if "overdue_balance" in collections_metrics:
+                management_metrics["collections_overdue_balance"] = collections_metrics[
+                    "overdue_balance"
+                ]
         return AgentResponse(
             operation="management_insights",
             as_of_date=as_of,
             entity={"type": "portfolio", "id": "all", "dimension": dimension},
-            status={"currency": PEN, "insight_engine": "DETERMINISTIC_V0_2"},
-            metrics={
+            status={
                 "currency": PEN,
-                "outstanding_balance": executive_metrics["outstanding_balance"],
-                "overdue_balance": executive_metrics["overdue_balance"],
-                "overdue_share_of_open_balance": overdue_share,
-                "top_n_customer_coverage": recovery_metrics["top_n_customer_coverage"],
-                "business_finding_count": len(findings),
-                "data_quality_alert_count": len(alerts),
+                "insight_engine": "DETERMINISTIC_V0_2",
+                "collections_kpis": collections_context["upstream_input"]["status"],
             },
+            metrics=management_metrics,
             findings=findings,
             alerts=alerts,
             recommended_actions=actions,
@@ -898,6 +1006,7 @@ class BIService:
                 "priority_rule": "HIGH >= 60% share, MEDIUM >= 25% share, otherwise LOW; document-review findings are MEDIUM",
                 "data_quality": "warnings are emitted as alerts and kept separate from business findings",
                 "causality": "not inferred",
+                "collections_kpis": "copied read-only from the Collections AgentResponse after contract, as_of_date and PEN scope validation; never recalculated by BI",
             },
-            upstream_inputs=self._upstream_inputs(),
+            upstream_inputs=self._upstream_inputs(collections_context["upstream_input"]),
         ).to_dict()
