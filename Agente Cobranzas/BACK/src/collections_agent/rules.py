@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 TOLERANCE = Decimal("0.01")
+PRIORITY_DPD_CAP = Decimal("90")
 PRIORITY_WEIGHTS = {
     "overdue_amount": Decimal("45"),
     "days_past_due": Decimal("30"),
@@ -13,6 +14,8 @@ PRIORITY_WEIGHTS = {
 }
 PRIORITY_HIGH_THRESHOLD = Decimal("60")
 PRIORITY_MEDIUM_THRESHOLD = Decimal("30")
+EXCEPTION_SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "INFO": 3}
+MAX_OPERATIONAL_ROWS = 500
 
 
 def aging_bucket(days: int | None) -> str:
